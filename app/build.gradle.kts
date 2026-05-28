@@ -1,0 +1,70 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.ksp)
+}
+
+android {
+    namespace = "com.readablesoftware.mhntracker"
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
+
+    defaultConfig {
+        applicationId = "com.readablesoftware.mhntracker"
+        minSdk = 29
+        targetSdk = 37
+        versionCode = 1
+        versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    // Required to include test resources (video files)
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
+}
+
+dependencies {
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.material)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.junit)
+
+    // OpenCV - image processing
+    implementation(libs.opencv)
+
+    // ML Kit - OCR
+    implementation(libs.text.recognition)
+
+    // Room - database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+
+}
+

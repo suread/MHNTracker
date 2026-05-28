@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local config
+local.properties
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Generated
+app/release/
+*.apk
+*.aab
+*.ap_
+
+# Keystore (never commit these)
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db
