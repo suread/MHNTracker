@@ -34,9 +34,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    // Required to include test resources (video files)
     testOptions {
+        // Required to include test resources (video files)
         unitTests.isIncludeAndroidResources = true
+        // required for older versions of Roboelectric - record presence in VCS, then remove
+        unitTests.all {
+            it.jvmArgs("-noverify")
+        }
     }
 
 }
@@ -65,6 +69,6 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-
+    testImplementation(libs.robolectric)
 }
 

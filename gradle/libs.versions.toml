@@ -11,6 +11,7 @@ opencv = "4.13.0"
 room = "2.8.4"
 ksp = "2.3.9"
 textRecognition = "16.0.1"
+robolectric = "4.16.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,6 +27,7 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 opencv = { module = "org.opencv:opencv", version.ref = "opencv" }
 text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "textRecognition" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
