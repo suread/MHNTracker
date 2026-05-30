@@ -2,11 +2,21 @@ package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
+import com.google.mlkit.common.MlKit
+import androidx.test.core.app.ApplicationProvider
+import com.readablesoftware.mhntracker.model.HuntResult
+import com.readablesoftware.mhntracker.model.MaterialDrop
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class HuntReportDetectorTest {
     // Khezu, 4 purple stars, 4 basic rewards (+ summer special exchange token)
     // flabby hide (r1 armour) appears 2nd + 4th positions
@@ -16,15 +26,21 @@ class HuntReportDetectorTest {
     // broken parts: 3 slots — r1 weapon slots 1+2, r3 slot 3
     // group hunt: r6 slot 1, normal slot 2, unframed slot 3
     // r1 weapon appears in basic slot 4 AND broken parts slots 1+2
-   private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
+    private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
 
+    companion object {
+        private val videoCache = mutableMapOf<String, List<Bitmap>>()  // lambda-free, just a map
 
+        private fun cachedVideo(videoName: String, loader: () -> List<Bitmap>): List<Bitmap> {  // lambda: () -> List<Bitmap> is the loader function
+            return videoCache.getOrPut(videoName) { loader() }  // lambda: { loader() } is the factory
+        }
+    }
 
     private lateinit var detector: HuntReportDetector
 
     @Before
     fun setUp() {
-        detector = HuntReportDetector()
+        detector = HuntReportDetector(textDetector = FakeTextDetector("Hunt Report"))
     }
 
     // -----------------------------------------------------------------------
@@ -32,18 +48,16 @@ class HuntReportDetectorTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `hunt report screen is recognised from first frame`() {
-        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 0)
-        assertTrue(
-            "First frame should be classified as hunt report screen",
-            detector.isHuntReportScreen(frame)
-        )
+    fun `hunt report screen is recognised when text contains Hunt Report`() {
+        detector = HuntReportDetector(textDetector = FakeTextDetector("Hunt Report"))
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
+        assertTrue(detector.isHuntReportScreen(frame))
     }
 
     @Test
-    fun `non-hunt-report frame is not classified as hunt report screen`() {
-        assumeTrue("Stub — supply a non-results frame to activate", false)
-        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = -1)
+    fun `hunt report screen is not recognised when text does not contain Hunt Report`() {
+        detector = HuntReportDetector(textDetector = FakeTextDetector("Something Else"))
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
         assertFalse(detector.isHuntReportScreen(frame))
     }
 
@@ -362,16 +376,26 @@ class HuntReportDetectorTest {
      * This matches intended sampling rate when run on device with MediaProjection
      * The consistent frames are then used for the tests
      */
-    private fun loadTestVideo(videoName: String): List<Bitmap> {
-        val prefix = "frames/$videoName/"
-        // List all frame files for this video by scanning the resource directory
-        val resourceUrl = javaClass.classLoader!!.getResource(prefix)
-            ?: return emptyList()
-        return File(resourceUrl.toURI())
-            .listFiles { f -> f.name.endsWith(".png") }
-            ?.sortedBy { it.name }
-            ?.mapNotNull { BitmapFactory.decodeFile(it.absolutePath) }
-            ?: emptyList()
-    }
 
+    private fun loadTestVideo(videoName: String): List<Bitmap> {
+        return cachedVideo(videoName) {  // lambda: the block is only called on first load
+            val prefix = "frames/$videoName/"
+            val resourceUrl = javaClass.classLoader!!.getResource(prefix)
+                ?: return@cachedVideo emptyList()  // labeled return from the lambda
+            val options = BitmapFactory.Options().apply { inSampleSize = 4 }  // lambda
+            File(resourceUrl.toURI())
+                .listFiles { f -> f.extension == "png" }  // lambda
+                ?.sortedBy { it.name }  // lambda
+                ?.mapNotNull { file ->  // lambda
+                    file.inputStream().use { stream ->  // lambda
+                        BitmapFactory.decodeStream(stream, null, options)
+                    }
+                }
+                ?: emptyList()
+        }
+    }
+}
+
+class FakeTextDetector(private val response: String) : TextDetector {
+    override fun detectText(bitmap: Bitmap) = response
 }

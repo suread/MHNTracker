@@ -37,9 +37,8 @@ android {
     testOptions {
         // Required to include test resources (video files)
         unitTests.isIncludeAndroidResources = true
-        // required for older versions of Roboelectric - record presence in VCS, then remove
-        unitTests.all {
-            it.jvmArgs("-noverify")
+        unitTests.all { test ->
+            test.maxHeapSize = "4g" // OOM loading frame images
         }
     }
 
@@ -70,5 +69,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+
 }
 
