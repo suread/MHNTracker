@@ -35,6 +35,9 @@ object RewardsScreenConstants {
     const val CONFIRM_Y2      = 2217
 
     // Confirm button colour sample (BGR, left side of button)
-    val CONFIRM_BGR           = intArrayOf(63, 185, 234)
+    val CONFIRM_BGR = intArrayOf(23, 177, 253)  // was intArrayOf(63, 185, 234)
     const val CONFIRM_COLOUR_TOLERANCE = 20
-}
+    const val CONFIRM_SAMPLE_X1 = 65
+    const val CONFIRM_SAMPLE_Y1 = 2110
+    const val CONFIRM_SAMPLE_X2 = 110
+    const val CONFIRM_SAMPLE_Y2 = 2190}

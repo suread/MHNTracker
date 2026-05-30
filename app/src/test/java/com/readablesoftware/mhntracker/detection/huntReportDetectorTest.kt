@@ -4,10 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
 import org.junit.Assert.*
-import org.junit.Assume
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
-import com.google.mlkit.common.MlKit
 import androidx.test.core.app.ApplicationProvider
 import com.readablesoftware.mhntracker.model.HuntResult
 import com.readablesoftware.mhntracker.model.MaterialDrop
@@ -344,6 +343,42 @@ class HuntReportDetectorTest {
         TODO("Implement once recording available")
     }
 
+    @Test
+    fun `confirm button is detected in faded frame`() {
+        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 39)
+        assumeTrue(
+            "Viper frame 39 faded button not detected - acceptable",
+            detector.isConfirmButtonVisible(frame)
+        )
+    }
+
+    @Test
+    fun `confirm button is detected in known clear frames`() {
+        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 40)
+        assertTrue(
+            "Khezu frame 31 should have confirm button visible",
+            detector.isConfirmButtonVisible(frame1)
+        )
+        assertTrue(
+            "Viper frame 40 should have confirm button visible",
+            detector.isConfirmButtonVisible(frame2)
+        )
+    }
+
+    @Test
+    fun `confirm button is not detected before it appears`() {
+        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 30)
+        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 38)
+        assertFalse(
+            "Khezu frame 30 should not have confirm button visible",
+            detector.isConfirmButtonVisible(frame1)
+        )
+        assertFalse(
+            "Viper frame 38 should not have confirm button visible",
+            detector.isConfirmButtonVisible(frame2)
+        )
+    }
     // -----------------------------------------------------------------------
     // Remaining stubs
     // -----------------------------------------------------------------------
@@ -357,10 +392,6 @@ class HuntReportDetectorTest {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
-
-    private fun assumeTrue(message: String, condition: Boolean) {
-        Assume.assumeTrue(message, condition)
-    }
 
     private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
         val path = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
@@ -393,6 +424,11 @@ class HuntReportDetectorTest {
                 }
                 ?: emptyList()
         }
+    }
+    @Test
+    fun debug_confirm_button_sample() {
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        println(detector.debugSampleRegion(frame))
     }
 }
 

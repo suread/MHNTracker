@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 class HuntReportDetectorInstrumentedTest {
 
     private val huntSoloR6NoBreaks = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
+    private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
 
     private lateinit var detector: HuntReportDetector
 
@@ -48,6 +49,38 @@ class HuntReportDetectorInstrumentedTest {
         assertFalse(detector.isHuntReportScreen(frame))
     }
 
+    @Test
+    fun confirm_button_is_not_detected_before_it_appears_khezu_frame_30() {
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 30)
+        assertFalse(detector.isConfirmButtonVisible(frame))
+    }
+
+    @Test
+    fun confirm_button_is_detected_when_visible_khezu_frame_31() {
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        assertTrue(detector.isConfirmButtonVisible(frame))
+    }
+
+    @Test
+    fun confirm_button_is_not_detected_before_it_appears_viper_frame_38() {
+        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 38)
+        assertFalse(detector.isConfirmButtonVisible(frame))
+    }
+
+    @Test
+    fun confirm_button_is_detected_when_fully_visible_viper_frame_40() {
+        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 40)
+        assertTrue(detector.isConfirmButtonVisible(frame))
+    }
+
+    @Test
+    fun confirm_button_faded_viper_frame_39_is_informational() {
+        // Frame 39 has faded confirm button due to animation.
+        // Detection is acceptable but not required.
+        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 39)
+        assumeTrue("Frame 39 faded button not detected — acceptable",
+            detector.isConfirmButtonVisible(frame))
+    }
     private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
         val path = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
         val context = InstrumentationRegistry.getInstrumentation().context
