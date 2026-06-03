@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.mlkit.common.MlKit
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -32,21 +33,21 @@ class HuntReportDetectorInstrumentedTest {
         // If this test fails it is not a regression — frame 15 is the primary signal.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 14)
         assumeTrue("Frame 14 faded text not detected — acceptable",
-            detector.isHuntReportScreen(frame))
+            runBlocking { detector.isHuntReportScreen(frame) } )
     }
 
     @Test
     fun hunt_report_screen_is_recognised_from_clear_frame_15() {
         // Frame 15 has fully black "Hunt Report" text. This must always pass.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertTrue(detector.isHuntReportScreen(frame))
+        assertTrue(runBlocking { detector.isHuntReportScreen(frame) })
     }
 
     @Test
     fun hunt_report_screen_is_not_recognised_from_before_hunt_report() {
         // Frame 13 is before the Hunt Report screen appears. Must not be detected.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 13)
-        assertFalse(detector.isHuntReportScreen(frame))
+        assertFalse(runBlocking { detector.isHuntReportScreen(frame) })
     }
 
     @Test

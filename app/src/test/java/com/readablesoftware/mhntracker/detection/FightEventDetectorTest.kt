@@ -3,6 +3,7 @@ package com.readablesoftware.mhntracker.detection
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -35,7 +36,7 @@ class FightEventDetectorTest {
         // Frame 137: BREAK fully displayed, primary positive test case.
         // This must always pass.
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 137)
-        assertTrue(detector.isBreakVisible(frame))
+        assertTrue(runBlocking { detector.isBreakVisible(frame) })
     }
 
     @Test
@@ -44,7 +45,7 @@ class FightEventDetectorTest {
         // Verifies detection is stable across consecutive frames,
         // which matters for capturing multiple breaks in quick succession.
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 138)
-        assertTrue(detector.isBreakVisible(frame))
+        assertTrue(runBlocking { detector.isBreakVisible(frame) })
     }
 
     // -----------------------------------------------------------------------
@@ -64,7 +65,7 @@ class FightEventDetectorTest {
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 135)
         assumeTrue(
             "Frame 135 partial BREAK not detected — acceptable during animation",
-            detector.isBreakVisible(frame)
+            runBlocking { detector.isBreakVisible(frame) }
         )
     }
 
@@ -76,14 +77,14 @@ class FightEventDetectorTest {
     fun `break is not detected when text detector returns different text`() {
         detector = FightEventDetector(textDetector = FakeTextDetector("HEAD"))
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 137)
-        assertFalse(detector.isBreakVisible(frame))
+        assertFalse(runBlocking { detector.isBreakVisible(frame) })
     }
 
     @Test
     fun `break is not detected when text detector returns empty string`() {
         detector = FightEventDetector(textDetector = FakeTextDetector(""))
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 137)
-        assertFalse(detector.isBreakVisible(frame))
+        assertFalse(runBlocking { detector.isBreakVisible(frame) })
     }
 
     // -----------------------------------------------------------------------

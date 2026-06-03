@@ -1,6 +1,7 @@
 package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.readablesoftware.mhntracker.model.HuntResult
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
@@ -8,11 +9,16 @@ import org.opencv.core.Core
 import org.opencv.core.Mat
 import kotlin.math.pow
 import kotlin.math.sqrt
+import android.util.Log
+
 class HuntReportDetector(
     private val textDetector: TextDetector = MlKitTextDetector()  // default for production
 ) {
 
-    fun isHuntReportScreen(frame: Bitmap): Boolean {
+    suspend fun isHuntReportScreen(frame: Bitmap): Boolean {
+        val t0 = System.currentTimeMillis()
+        Log.d("MHN-timing", "isHuntReport start: ${System.currentTimeMillis() - t0}ms")
+
         val crop = Bitmap.createBitmap(  // crops to the "Hunt Report" text region
             frame,
             RewardsScreenConstants.HUNT_REPORT_X1,
@@ -20,7 +26,15 @@ class HuntReportDetector(
             RewardsScreenConstants.HUNT_REPORT_X2 - RewardsScreenConstants.HUNT_REPORT_X1,
             RewardsScreenConstants.HUNT_REPORT_Y2 - RewardsScreenConstants.HUNT_REPORT_Y1,
         )
-        return textDetector.detectText(crop).contains("Hunt Report", ignoreCase = true)
+        Log.d("MHN-timing", "isHuntReport crop made: ${System.currentTimeMillis() - t0}ms")
+        // image used for MLKit must be at least 32x32 - so if scaling takes us below that it will fail
+        val result1 = textDetector.detectText(crop)
+        Log.d("MHN-timing", "isHuntReport text detected: ${System.currentTimeMillis() - t0}ms")
+        Log.d("MHN-text", result1)
+        val result2 = result1.contains("Hunt Report", ignoreCase = true)
+        Log.d("MHN-timing", "isHuntReport text contents: ${System.currentTimeMillis() - t0}ms")
+
+        return result2
     }
 
     fun process(frames: List<Bitmap>): HuntResult? {

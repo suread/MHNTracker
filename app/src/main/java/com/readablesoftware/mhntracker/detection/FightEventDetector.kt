@@ -21,7 +21,7 @@ class FightEventDetector(
      * Detection is case-insensitive to be robust against ML Kit returning
      * mixed-case results from the stylised font.
      */
-    fun isBreakVisible(frame: Bitmap): Boolean {
+    suspend fun isBreakVisible(frame: Bitmap): Boolean {
         val crop = Bitmap.createBitmap(
             frame,
             BREAK_X1,

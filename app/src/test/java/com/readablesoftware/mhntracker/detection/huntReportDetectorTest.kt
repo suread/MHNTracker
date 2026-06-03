@@ -3,6 +3,7 @@ package com.readablesoftware.mhntracker.detection
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -50,14 +51,14 @@ class HuntReportDetectorTest {
     fun `hunt report screen is recognised when text contains Hunt Report`() {
         detector = HuntReportDetector(textDetector = FakeTextDetector("Hunt Report"))
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertTrue(detector.isHuntReportScreen(frame))
+        assertTrue(runBlocking { detector.isHuntReportScreen(frame) })
     }
 
     @Test
     fun `hunt report screen is not recognised when text does not contain Hunt Report`() {
         detector = HuntReportDetector(textDetector = FakeTextDetector("Something Else"))
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertFalse(detector.isHuntReportScreen(frame))
+        assertFalse(runBlocking { detector.isHuntReportScreen(frame) })
     }
 
     // -----------------------------------------------------------------------
@@ -433,5 +434,5 @@ class HuntReportDetectorTest {
 }
 
 class FakeTextDetector(private val response: String) : TextDetector {
-    override fun detectText(bitmap: Bitmap) = response
+    override suspend fun detectText(bitmap: Bitmap) = response
 }

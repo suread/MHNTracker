@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -28,14 +29,14 @@ class FightEventDetectorInstrumentedTest {
     fun break_is_detected_from_fully_visible_frame_137() {
         // Primary positive test with real ML Kit. Must always pass.
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 137)
-        assertTrue(detector.isBreakVisible(frame))
+        assertTrue(runBlocking { detector.isBreakVisible(frame) })
     }
 
     @Test
     fun break_is_not_detected_from_fight_frame_before_break_134() {
         // Primary negative test with real ML Kit. Must always pass.
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 134)
-        assertFalse(detector.isBreakVisible(frame))
+        assertFalse(runBlocking { detector.isBreakVisible(frame) })
     }
 
     @Test
@@ -44,7 +45,7 @@ class FightEventDetectorInstrumentedTest {
         val frame = loadTestFrame(fightBreakRecording, frameIndex = 135)
         assumeTrue(
             "Frame 135 partial BREAK not detected — acceptable during animation",
-            detector.isBreakVisible(frame)
+            runBlocking { detector.isBreakVisible(frame) }
         )
     }
 
