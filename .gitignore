@@ -25,3 +25,5 @@ app/release/
 # OS
 .DS_Store
 Thumbs.db
+/hunt-captures/
+/analysis_output/

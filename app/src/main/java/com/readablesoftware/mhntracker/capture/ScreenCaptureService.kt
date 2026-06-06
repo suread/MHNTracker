@@ -22,6 +22,7 @@ import com.readablesoftware.mhntracker.detection.HuntReportDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -38,24 +39,31 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "extra_result_data"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "mhn_capture_channel"
-        private const val IDLE_INTERVAL_MS    = 500L   // 2fps — while waiting for hunt report
-        private const val CAPTURE_INTERVAL_MS = 100L   // 10fps — while capturing hunt report
-        private const val MAX_SESSION_FRAMES  = 600    // safety cap: 60 seconds at 10fps
+        private const val CAPTURE_INTERVAL_MS = 200L   // 5fps
+        private const val MAX_SESSION_FRAMES  = 300    // safety cap: 30 seconds at 10fps
+        private const val FRAME_CHANNEL_CAPACITY = 2
     }
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-    private var captureJob: Job? = null
+    private var producerJob: Job? = null
+    private var consumerJob: Job? = null
     private var currentSessionDir: File? = null
-    private var isCapturing = false
+
+    // Written only by consumer. Read by producer if variable rates are added later.
+    @Volatile private var isCapturing = false
+
     private var frameIndex = 0
 
-    private val detector = HuntReportDetector()
+    private val detector by lazy { HuntReportDetector.create(this) }
     private val fightEventDetector = FightEventDetector()
     private val serviceScope = CoroutineScope(Dispatchers.IO)
 
-    // Flat directory for break frames
+    // Channel connecting producer to consumer. Fixed capacity; drop-oldest when full.
+    private val frameChannel = Channel<Bitmap>(capacity = FRAME_CHANNEL_CAPACITY)
+
+    // Flat directory for break frames — created lazily on first save.
     // All breaks across all fights land here, distinguished by timestamp filename.
     private val breaksDir: File by lazy {
         File(getExternalFilesDir(null), "breaks")
@@ -84,28 +92,6 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
-/*
-    private fun setupVirtualDisplay() {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
-
-        val width  = metrics.widthPixels
-        val height = metrics.heightPixels
-        val dpi    = metrics.densityDpi
-
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "MHNCapture",
-            width, height, dpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null, null
-        )
-    }
-*/
-
     private fun setupVirtualDisplay() {
         val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
@@ -133,91 +119,92 @@ class ScreenCaptureService : Service() {
             null, null
         )
     }
-/*
-    private fun startFrameLoop() {
-        captureJob = serviceScope.launch {  // lambda: coroutine body
-            while (true) {
-                delay(CAPTURE_INTERVAL_MS)
-                val bitmap = captureFrame() ?: continue
 
-                when {
-                    !isCapturing && detector.isHuntReportScreen(bitmap) -> {
+    private fun startFrameLoop() {
+
+        // ── Producer ─────────────────────────────────────────────────────────
+        // Captures frames at a fixed rate. Never blocks on detection.
+        // If the channel is full, drops the oldest frame and sends the new one.
+        producerJob = serviceScope.launch {
+            while (true) {
+                val frameStart = System.currentTimeMillis()
+
+                val bitmap = captureFrame()
+                if (bitmap != null) {
+                    if (!frameChannel.trySend(bitmap).isSuccess) {
+                        frameChannel.tryReceive()   // discard oldest
+                        frameChannel.trySend(bitmap)
+                        Log.d("MHNTiming", "producer: channel full, oldest frame dropped")
+                    }
+                }
+
+                val elapsed = System.currentTimeMillis() - frameStart
+                delay(maxOf(0L, CAPTURE_INTERVAL_MS - elapsed))
+            }
+        }
+
+        // ── Consumer ─────────────────────────────────────────────────────────
+        // Runs detection on each frame. Owns all session state.
+        // Break detection is suppressed during hunt report capture.
+        consumerJob = serviceScope.launch {
+            for (bitmap in frameChannel) {
+                val t0 = System.currentTimeMillis()
+
+                if (isCapturing) {
+                    // ── isConfirmButtonVisible ────────────────────────────
+                    val t1 = System.currentTimeMillis()
+                    val confirmVisible = detector.isConfirmButtonVisible(bitmap)
+                    Log.d("MHNTiming", "isConfirmButtonVisible: ${System.currentTimeMillis() - t1}ms  result=$confirmVisible")
+
+                    when {
+                        confirmVisible -> {
+                            Log.d("MHNCapture", "Confirm button detected — stopping capture, saved $frameIndex frames")
+                            saveFrame(bitmap)
+                            isCapturing = false
+                            currentSessionDir = null
+                            updateNotification("Waiting for hunt report")
+                        }
+                        frameIndex >= MAX_SESSION_FRAMES -> {
+                            Log.w("MHNCapture", "Frame cap reached ($MAX_SESSION_FRAMES) — stopping capture without confirm button")
+                            isCapturing = false
+                            currentSessionDir = null
+                            updateNotification("Waiting for hunt report")
+                        }
+                        else -> {
+                            Log.d("MHNCapture", "Capturing frame $frameIndex")
+                            saveFrame(bitmap)
+                        }
+                    }
+
+                } else {
+                    // ── isHuntReportScreen ────────────────────────────────
+                    val t1 = System.currentTimeMillis()
+                    val huntVisible = detector.isHuntReportScreen(bitmap)
+                    Log.d("MHNTiming", "isHuntReportScreen: ${System.currentTimeMillis() - t1}ms  result=$huntVisible")
+
+                    if (huntVisible) {
+                        Log.d("MHNCapture", "Hunt report detected — starting capture")
                         isCapturing = true
                         frameIndex = 0
                         currentSessionDir = createSessionDir()
                         updateNotification("Capturing hunt report")
                         saveFrame(bitmap)
                     }
-                    isCapturing && detector.isConfirmButtonVisible(bitmap) -> {
-                        saveFrame(bitmap)
-                        isCapturing = false
-                        currentSessionDir = null
-                        updateNotification("Waiting for hunt report")
-                    }
-                    isCapturing -> {
-                        saveFrame(bitmap)
-                    }
-                }
-            }
-        }
-    }
-*/
 
-    private fun startFrameLoop() {
-        captureJob = serviceScope.launch {  // lambda: coroutine body
-            while (true) {
-                val frameStart = System.currentTimeMillis()
-                val bitmap = captureFrame()
+                    // ── isBreakVisible ────────────────────────────────────
+                    // Suppressed during hunt report capture — no breaks occur
+                    // on the rewards screen.
+                    val t2 = System.currentTimeMillis()
+                    val breakVisible = fightEventDetector.isBreakVisible(bitmap)
+                    Log.d("MHNTiming", "isBreakVisible: ${System.currentTimeMillis() - t2}ms  result=$breakVisible")
 
-                if (bitmap != null) {
-                    if (isCapturing) {
-                        // Capture path — colour check only, no ML Kit.
-                        // isHuntReportScreen is not called here: we already know
-                        // we are on the hunt report screen.
-                        when {
-                            detector.isConfirmButtonVisible(bitmap) -> {
-                                Log.d("MHNCapture", "Confirm button detected — stopping capture, saved $frameIndex frames")
-                                saveFrame(bitmap)
-                                isCapturing = false
-                                currentSessionDir = null
-                                updateNotification("Waiting for hunt report")
-                            }
-                            frameIndex >= MAX_SESSION_FRAMES -> {
-                                Log.w("MHNCapture", "Frame cap reached ($MAX_SESSION_FRAMES) — stopping capture without confirm button")
-                                isCapturing = false
-                                currentSessionDir = null
-                                updateNotification("Waiting for hunt report")
-                            }
-                            else -> {
-                                Log.d("MHNCapture", "Capturing frame $frameIndex")
-                                saveFrame(bitmap)
-                            }
-                        }
-                    } else {
-                        // Idle path — ML Kit call to detect hunt report start.
-                        if (detector.isHuntReportScreen(bitmap)) {
-                            Log.d("MHNCapture", "Hunt report detected — starting capture")
-                            isCapturing = true
-                            frameIndex = 0
-                            currentSessionDir = createSessionDir()
-                            updateNotification("Capturing hunt report")
-                            saveFrame(bitmap)
-                        }
-                    }
-
-                    // Break detection runs independently of hunt report state —
-                    // a break can occur at any point during a fight.
-                    if (fightEventDetector.isBreakVisible(bitmap)) {
+                    if (breakVisible) {
                         Log.d("MHNCapture", "BREAK detected — saving break frame")
                         saveBreakFrame(bitmap)
                     }
                 }
 
-                // Delay for the remainder of the target interval so that
-                // processing time does not accumulate into the sample rate.
-                val elapsed = System.currentTimeMillis() - frameStart
-                val interval = if (isCapturing) CAPTURE_INTERVAL_MS else IDLE_INTERVAL_MS
-                delay(maxOf(0L, interval - elapsed))
+                Log.d("MHNTiming", "consumer: total ${System.currentTimeMillis() - t0}ms  isCapturing=$isCapturing")
             }
         }
     }
@@ -245,9 +232,7 @@ class ScreenCaptureService : Service() {
 
     private fun saveFrame(bitmap: Bitmap) {
         val dir = currentSessionDir ?: return
-//        val file = File(dir, "frame_${frameIndex.toString().padStart(4, '0')}.png")
-        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date())
-        val file = File(dir, "frame_${frameIndex.toString().padStart(4, '0')}.$timestamp.png")
+        val file = File(dir, "frame_${frameIndex.toString().padStart(4, '0')}.png")
         FileOutputStream(file).use { stream ->  // lambda
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
@@ -255,16 +240,18 @@ class ScreenCaptureService : Service() {
     }
 
     private fun saveBreakFrame(bitmap: Bitmap) {
+        getExternalFilesDir(null)?.mkdirs()  // recreate if deleted mid-run
         breaksDir.mkdirs()  // no-op if exists, recreates if deleted between pulls
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date())
         val file = File(breaksDir, "break_$timestamp.png")
-        FileOutputStream(file).use { stream ->
+        FileOutputStream(file).use { stream ->  // lambda
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
         Log.d("MHNCapture", "Break frame saved: ${file.name}")
     }
 
     private fun createSessionDir(): File {
+        getExternalFilesDir(null)?.mkdirs()  // recreate if deleted mid-run
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.UK).format(Date())
         val dir = File(getExternalFilesDir(null), "sessions/$timestamp")
         dir.mkdirs()
@@ -295,7 +282,9 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onDestroy() {
-        captureJob?.cancel()
+        producerJob?.cancel()
+        consumerJob?.cancel()
+        frameChannel.close()
         virtualDisplay?.release()
         mediaProjection?.stop()
         imageReader?.close()

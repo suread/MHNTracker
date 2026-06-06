@@ -16,38 +16,51 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HuntReportDetectorInstrumentedTest {
 
-    private val huntSoloR6NoBreaks = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
-    private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
+    private val huntSoloR6NoBreaks     = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
+    private val huntGroupR6WithBreaks  = "screen-20260527-002543-viper.flink.r6"
 
     private lateinit var detector: HuntReportDetector
 
     @Before
     fun setUp() {
-        detector = HuntReportDetector()  // uses MlKitTextDetector by default
+        // Uses create(context) to load the template from app assets —
+        // confirms asset loading works correctly on real device hardware.
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        detector = HuntReportDetector.create(context)
     }
 
     @Test
     fun hunt_report_screen_is_recognised_from_faded_frame_14() {
-        // Frame 14 has faded "Hunt Report" text due to reveal animation.
-        // This test documents that ML Kit can detect it even faded.
-        // If this test fails it is not a regression — frame 15 is the primary signal.
+        // Frame 14: "Hunt Report" text fading in via reveal animation.
+        // NCC score will be lower than a fully rendered frame.
+        // Detection is acceptable but not required — frame 15 is the primary signal.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 14)
-        assumeTrue("Frame 14 faded text not detected — acceptable",
-            runBlocking { detector.isHuntReportScreen(frame) } )
+        assumeTrue(
+            "Frame 14 faded text not detected — acceptable",
+            detector.isHuntReportScreen(frame)
+        )
     }
 
     @Test
     fun hunt_report_screen_is_recognised_from_clear_frame_15() {
-        // Frame 15 has fully black "Hunt Report" text. This must always pass.
+        // Frame 15: "Hunt Report" fully rendered. Must always pass.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertTrue(runBlocking { detector.isHuntReportScreen(frame) })
+        assertTrue(detector.isHuntReportScreen(frame))
     }
 
     @Test
     fun hunt_report_screen_is_not_recognised_from_before_hunt_report() {
-        // Frame 13 is before the Hunt Report screen appears. Must not be detected.
+        // Frame 13: hunt report screen not yet visible. Must always fail detection.
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 13)
-        assertFalse(runBlocking { detector.isHuntReportScreen(frame) })
+        assertFalse(detector.isHuntReportScreen(frame))
+    }
+
+    @Test
+    fun hunt_report_screen_is_not_recognised_when_confirm_button_visible() {
+        // Frame 31: confirm button visible, "Hunt Report" title has scrolled off.
+        // Crop region contains UI background only — NCC score should be low.
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        assertFalse(detector.isHuntReportScreen(frame))
     }
 
     @Test
@@ -76,16 +89,18 @@ class HuntReportDetectorInstrumentedTest {
 
     @Test
     fun confirm_button_faded_viper_frame_39_is_informational() {
-        // Frame 39 has faded confirm button due to animation.
-        // Detection is acceptable but not required.
+        // Frame 39: confirm button fading in. Detection acceptable but not required.
         val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 39)
-        assumeTrue("Frame 39 faded button not detected — acceptable",
-            detector.isConfirmButtonVisible(frame))
+        assumeTrue(
+            "Frame 39 faded button not detected — acceptable",
+            detector.isConfirmButtonVisible(frame)
+        )
     }
+
     private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
         val path = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
         val context = InstrumentationRegistry.getInstrumentation().context
-        return context.assets.open(path).use { stream ->  // lambda
+        return context.assets.open(path).use { stream ->
             BitmapFactory.decodeStream(stream)
                 ?: error("Failed to decode bitmap from: $path")
         }

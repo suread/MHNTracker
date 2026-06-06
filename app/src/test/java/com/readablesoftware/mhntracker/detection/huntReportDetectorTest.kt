@@ -28,6 +28,12 @@ class HuntReportDetectorTest {
     // r1 weapon appears in basic slot 4 AND broken parts slots 1+2
     private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
 
+    // Path to the production template asset, loaded directly from src/main/assets/
+    // so tests use the same file as production — no duplicate asset needed.
+    // This path is relative to the project root, which is the working directory
+    // when Robolectric tests run via Gradle.
+    private val templatePath = "src/main/assets/hunt_report_template.png"
+
     companion object {
         private val videoCache = mutableMapOf<String, List<Bitmap>>()  // lambda-free, just a map
 
@@ -40,25 +46,91 @@ class HuntReportDetectorTest {
 
     @Before
     fun setUp() {
-        detector = HuntReportDetector(textDetector = FakeTextDetector("Hunt Report"))
+        // Load the production template via the file path constructor.
+        // All tests share the same detector instance — the template is fixed.
+        detector = HuntReportDetector.createFromFile(templatePath)
     }
 
     // -----------------------------------------------------------------------
-    // Screen classification
+    // Screen classification — NCC-based
     // -----------------------------------------------------------------------
 
     @Test
-    fun `hunt report screen is recognised when text contains Hunt Report`() {
-        detector = HuntReportDetector(textDetector = FakeTextDetector("Hunt Report"))
+    fun `hunt report screen is recognised from frame with Hunt Report text visible`() {
+        // Frame 15: Hunt Report text fully visible, black on pale blue-grey background.
+        // Expected NCC score >= NCC_THRESHOLD (0.85).
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertTrue(runBlocking { detector.isHuntReportScreen(frame) })
+        assertTrue(
+            "Frame 15 should be recognised as hunt report screen",
+            detector.isHuntReportScreen(frame)
+        )
     }
 
     @Test
-    fun `hunt report screen is not recognised when text does not contain Hunt Report`() {
-        detector = HuntReportDetector(textDetector = FakeTextDetector("Something Else"))
-        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15)
-        assertFalse(runBlocking { detector.isHuntReportScreen(frame) })
+    fun `hunt report screen is not recognised before it appears`() {
+        // Frame 13: hunt report screen not yet visible.
+        // Expected NCC score well below NCC_THRESHOLD.
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 13)
+        assertFalse(
+            "Frame 13 should not be recognised as hunt report screen",
+            detector.isHuntReportScreen(frame)
+        )
+    }
+
+    @Test
+    fun `hunt report screen is not recognised when text has scrolled off`() {
+        // Late frames in the session have the hunt report UI visible but
+        // the "Hunt Report" title text has scrolled up off screen.
+        // The crop region contains the UI background only — NCC should be low.
+        // Frame 31 is the confirm button frame — title is gone by then.
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        assertFalse(
+            "Frame 31 (confirm button) should not be recognised as hunt report screen",
+            detector.isHuntReportScreen(frame)
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // NCC internals — unit tests independent of frame files
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `ncc returns 1 for identical arrays`() {
+        val a = floatArrayOf(10f, 20f, 30f, 40f, 50f)
+        assertEquals(1.0f, HuntReportDetector.ncc(a, a.copyOf()), 0.001f)
+    }
+
+    @Test
+    fun `ncc returns -1 for inverted arrays`() {
+        val a = floatArrayOf(10f, 20f, 30f, 40f, 50f)
+        val b = floatArrayOf(50f, 40f, 30f, 20f, 10f)
+        assertEquals(-1.0f, HuntReportDetector.ncc(a, b), 0.001f)
+    }
+
+    @Test
+    fun `ncc returns 0 for flat array`() {
+        val a = floatArrayOf(1f, 1f, 1f, 1f)
+        val b = floatArrayOf(10f, 20f, 30f, 40f)
+        assertEquals(0.0f, HuntReportDetector.ncc(a, b), 0.001f)
+    }
+
+    @Test
+    fun `ncc is insensitive to mean offset`() {
+        // NCC subtracts the mean, so adding a constant offset to one array
+        // should not change the score.
+        val a = floatArrayOf(10f, 20f, 30f, 40f, 50f)
+        val b = floatArrayOf(110f, 120f, 130f, 140f, 150f)  // a + 100
+        assertEquals(1.0f, HuntReportDetector.ncc(a, b), 0.001f)
+    }
+
+    @Test
+    fun `bitmapToGrey produces correct mean of channels`() {
+        // Create a 1x1 bitmap with known RGB values and verify greyscale output.
+        val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        bitmap.setPixel(0, 0, (0xFF shl 24) or (90 shl 16) or (60 shl 8) or 30)
+        val grey = HuntReportDetector.bitmapToGrey(bitmap)
+        assertEquals(1, grey.size)
+        assertEquals((90 + 60 + 30) / 3f, grey[0], 0.01f)
     }
 
     // -----------------------------------------------------------------------
@@ -188,7 +260,7 @@ class HuntReportDetectorTest {
     fun `unframed icons are not recorded as drops`() {
         // Both recordings have an unframed event icon in basic rewards.
         // Neither should appear as a MaterialDrop.
-        val soloResult = detector.process(loadTestVideo(huntSoloR6NoBreaks))
+        val soloResult  = detector.process(loadTestVideo(huntSoloR6NoBreaks))
         val groupResult = detector.process(loadTestVideo(huntGroupR6WithBreaks))
 
         assertNotNull(soloResult)
@@ -220,7 +292,7 @@ class HuntReportDetectorTest {
 
         assertNotNull(result)
         val basicDrops = result!!.drops.filter { it.section == "basic" }
-        val indices = basicDrops.map { it.slotIndex }.sorted()
+        val indices    = basicDrops.map { it.slotIndex }.sorted()
         assertEquals(
             "Slot indices should be 0–3",
             listOf(0, 1, 2, 3),
@@ -309,16 +381,12 @@ class HuntReportDetectorTest {
 
     @Test
     fun `same material appearing in multiple sections is recorded separately`() {
-        // Viper Tobi-Kadachi R1 weapon material appears in:
-        //   basic rewards slot 3 (index 3)
-        //   broken part rewards slots 0 and 1
-        // These are three separate MaterialDrop records.
         val frames = loadTestVideo(huntGroupR6WithBreaks)
         val result = detector.process(frames)
 
         assertNotNull(result)
 
-        val basicR1Weapon = result!!.drops
+        val basicR1Weapon  = result!!.drops
             .filter { it.section == "basic" && it.slotIndex == 3 }
         val brokenR1Weapon = result.drops
             .filter { it.section == "broken_part" && it.slotIndex in 0..1 }
@@ -326,8 +394,6 @@ class HuntReportDetectorTest {
         assertEquals("One R1 weapon drop in basic rewards slot 3", 1, basicR1Weapon.size)
         assertEquals("Two R1 weapon drops in broken part rewards", 2, brokenR1Weapon.size)
 
-        // All three should have the same itemId once lookup table is populated.
-        // For now assert rarity matches — all three should be rarity 1.
         assertTrue("Basic R1 weapon should be rarity 1",
             basicR1Weapon.all { it.rarity == 1 })
         assertTrue("Broken part R1 weapons should be rarity 1",
@@ -395,7 +461,7 @@ class HuntReportDetectorTest {
     // -----------------------------------------------------------------------
 
     private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
-        val path = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
+        val path   = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
         val stream = javaClass.classLoader!!.getResourceAsStream(path)
             ?: error("Test resource not found: $path")
         return BitmapFactory.decodeStream(stream)
@@ -426,6 +492,7 @@ class HuntReportDetectorTest {
                 ?: emptyList()
         }
     }
+
     @Test
     fun debug_confirm_button_sample() {
         val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
