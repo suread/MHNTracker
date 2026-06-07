@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.readablesoftware.mhntracker.R
 
 /**
  * Invisible trampoline Activity whose sole purpose is to request the
@@ -26,24 +27,29 @@ class PermissionTrampolineActivity : AppCompatActivity() {
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val intent = Intent(this, ScreenCaptureService::class.java).apply {
-                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
-            }
-            startForegroundService(intent)
-        } else {
-            Toast.makeText(
-                this,
-                "Screen capture permission denied — hunt tracking inactive",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-        finish()
+        onPermissionResult(result.resultCode, result.data)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+    }
+
+    // Internal visibility so Robolectric tests can invoke directly.
+    internal fun onPermissionResult(resultCode: Int, data: Intent?) {
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            val intent = Intent(this, ScreenCaptureService::class.java).apply {
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
+            }
+            startForegroundService(intent)
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.toast_capture_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        finish()
     }
 }

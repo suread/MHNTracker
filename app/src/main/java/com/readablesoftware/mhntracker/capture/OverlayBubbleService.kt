@@ -160,7 +160,7 @@ class OverlayBubbleService : Service() {
                         .apply()
                 } else {
                     // Tap — no drag occurred
-                    handleTap()
+                    controller.onTap()
                 }
                 true
             }
@@ -168,19 +168,9 @@ class OverlayBubbleService : Service() {
         }
     }
 
-    private fun handleTap() {
-        if (AppState.mediaProjectionActive.value) {
-            // Stop capture
-            stopService(Intent(this, ScreenCaptureService::class.java))
-        } else {
-            // Launch trampoline to request MediaProjection permission
-            val intent = Intent(this, PermissionTrampolineActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        }
+    private val controller by lazy {
+        BubbleController(this, AppState.mediaProjectionActive)
     }
-
     private fun defaultX(): Int {
         val display = windowManager.defaultDisplay
         val size    = android.graphics.Point()
