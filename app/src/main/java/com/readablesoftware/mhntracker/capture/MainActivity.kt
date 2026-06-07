@@ -51,7 +51,26 @@ class MainActivity : AppCompatActivity() {
                 updateUi(state)
             }
         }
+
         requestBatteryOptimisationExemption()
+        ensureOverlayPermission()
+    }
+
+    private fun ensureOverlayPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(intent)
+        } else {
+            startOverlayService()
+        }
+    }
+
+    private fun startOverlayService() {
+        val intent = Intent(this, OverlayBubbleService::class.java)
+        startForegroundService(intent)
     }
 
     override fun onResume() {
@@ -59,7 +78,17 @@ class MainActivity : AppCompatActivity() {
         if (!isServiceRunning() && viewModel.state.value != CaptureState.STOPPED) {
             viewModel.updateState(CaptureState.STOPPED)
         }
+        if (Settings.canDrawOverlays(this) && !isOverlayServiceRunning()) {
+            startOverlayService()
+        }
     }
+
+    private fun isOverlayServiceRunning(): Boolean {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == OverlayBubbleService::class.java.name }
+    }
+
     private fun requestMediaProjectionPermission() {
         projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
     }

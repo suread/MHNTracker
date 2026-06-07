@@ -107,6 +107,7 @@ class ScreenCaptureService : Service() {
             override fun onStop() {
                 virtualDisplay?.release()
                 imageReader?.close()
+                AppState.setMediaProjectionActive(false)
                 stopSelf()
             }
         }, null)
@@ -118,6 +119,8 @@ class ScreenCaptureService : Service() {
             imageReader?.surface,
             null, null
         )
+
+        AppState.setMediaProjectionActive(true)
     }
 
     private fun startFrameLoop() {
@@ -288,6 +291,7 @@ class ScreenCaptureService : Service() {
         virtualDisplay?.release()
         mediaProjection?.stop()
         imageReader?.close()
+        AppState.setMediaProjectionActive(false)
         super.onDestroy()
     }
 }
