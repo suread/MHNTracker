@@ -19,7 +19,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import android.content.SharedPreferences
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import kotlin.math.roundToInt
@@ -33,15 +32,6 @@ class OverlayBubbleService : Service() {
         private const val PREF_X = "bubble_x"
         private const val PREF_Y = "bubble_y"
 
-        // Visual constants
-        private const val SIZE_INACTIVE_DP = 56f
-        private const val SIZE_ACTIVE_DP   = 36f
-        private const val ALPHA_INACTIVE   = 1.0f
-        private const val ALPHA_ACTIVE     = 0.45f
-
-        // Orange when inactive (prominent), grey-green when active (unobtrusive)
-        private val COLOUR_INACTIVE = Color.parseColor("#FF8C00")
-        private val COLOUR_ACTIVE   = Color.parseColor("#4CAF50")
     }
 
     private lateinit var windowManager: WindowManager
@@ -77,9 +67,9 @@ class OverlayBubbleService : Service() {
 
     private fun createBubble() {
         bubbleView = ImageView(this)
-        updateBubbleAppearance(active = false)
+        updateBubbleAppearance(status = CaptureStatus.INACTIVE)
 
-        val sizePx = dpToPx(SIZE_INACTIVE_DP)
+        val sizePx = dpToPx(controller.appearanceForStatus(CaptureStatus.INACTIVE).sizeDp)
 
         layoutParams = WindowManager.LayoutParams(
             sizePx,
@@ -107,20 +97,20 @@ class OverlayBubbleService : Service() {
         }
     }
 
-    private fun updateBubbleAppearance(active: Boolean) {
-        val colour = if (active) COLOUR_ACTIVE else COLOUR_INACTIVE
-        val alpha  = if (active) ALPHA_ACTIVE  else ALPHA_INACTIVE
+    private fun updateBubbleAppearance(status: CaptureStatus) {
+        val bubbleAppearance = controller.appearanceForStatus(status)
 
         val drawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(colour)
+            setColor(bubbleAppearance.colour)
         }
         bubbleView.setImageDrawable(drawable)
-        bubbleView.alpha = alpha
+        bubbleView.alpha = bubbleAppearance.alpha
     }
 
-    private fun resizeBubble(active: Boolean) {
-        val sizePx = dpToPx(if (active) SIZE_ACTIVE_DP else SIZE_INACTIVE_DP)
+    private fun resizeBubble(status: CaptureStatus) {
+        val bubbleAppearance = controller.appearanceForStatus(status)
+        val sizePx = dpToPx(bubbleAppearance.sizeDp)
         layoutParams.width  = sizePx
         layoutParams.height = sizePx
         windowManager.updateViewLayout(bubbleView, layoutParams)
@@ -175,7 +165,7 @@ class OverlayBubbleService : Service() {
         val display = windowManager.defaultDisplay
         val size    = android.graphics.Point()
         display.getSize(size)
-        return size.x - dpToPx(SIZE_INACTIVE_DP) - dpToPx(8f)
+        return size.x - dpToPx(controller.appearanceForStatus(CaptureStatus.INACTIVE).sizeDp) - dpToPx(8f)
     }
 
     private fun defaultY(): Int {
