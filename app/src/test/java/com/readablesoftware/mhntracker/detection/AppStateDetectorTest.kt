@@ -10,6 +10,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.ParameterizedRobolectricTestRunner.*
+import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
 
@@ -91,6 +92,54 @@ class MapNotDetectedTest(private val frameName: String) {
 
 }
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class LargeVolumeNegativeMapTests {
+    private lateinit var detector: AppStateDetector
+
+    @Before
+    fun setUp() {
+        detector = AppStateDetector()
+    }
+
+    @Test
+    fun `brute force scan negative frames`() {
+        val topLevelDirectory = "map_detection/negative/_No_surplus"   // one level up from actual subfolders
+        var frameCount = 0
+        for ((subdirName, framePath) in framePathsIn(topLevelDirectory)) {
+            val frame = loadTestFrame(topLevelDirectory, framePath)
+            frameCount++
+            if (detector.isMapScreen(frame)) {
+                println("FALSE POSITIVE: $topLevelDirectory/$framePath")
+            }
+        }
+        println(frameCount)
+    }
+
+    @Test
+    fun `brute force scan negative frames 2`() {
+        val topLevelDirectory = "map_detection/negative/_Extra_frames"   // one level up from actual subfolders
+        var frameCount = 0
+        for ((subdirName, framePath) in framePathsIn(topLevelDirectory)) {
+            val frame = loadTestFrame(topLevelDirectory, framePath)
+            frameCount++
+            if (detector.isMapScreen(frame)) {
+                println("FALSE POSITIVE: $topLevelDirectory/$framePath")
+            }
+        }
+        println(frameCount)
+    }
+
+    private fun framePathsIn(topLevelDirectory: String): List<Pair<String, String>> {
+        val baseDir = File("src/test/resources/frames/$topLevelDirectory")
+        val subdirs = baseDir.listFiles { f -> f.isDirectory } ?: emptyArray()
+
+        return subdirs.flatMap { subdir ->
+            val pngs = subdir.listFiles { f -> f.extension == "png" } ?: emptyArray()
+            pngs.map { png -> subdir.name to "${subdir.name}/${png.name}" }
+        }
+    }
+}
 
 class MapDetectionTest {
 
@@ -105,6 +154,7 @@ class MapDetectionTest {
         val frames = framesFrom("map_detection/negative")
         assertTrue("No negative test frames found", frames.isNotEmpty())
     }
+
 }
 
 

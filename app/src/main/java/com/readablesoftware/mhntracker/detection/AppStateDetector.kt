@@ -2,6 +2,9 @@ package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
 import android.util.Log
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 data class RgbSample(
     val r: Double,
@@ -73,6 +76,9 @@ class AppStateDetector {
         // Testing for map screen (looking for compass)
         private const val RING_GB_MIN = 230
         private const val NEEDLE_GB_MAX = 90
+        private const val COMPASS_CENTRE_X = 1013
+        private const val COMPASS_CENTRE_Y = 248
+        private const val RING_RADIUS = 30
     }
 
     /**
@@ -118,15 +124,89 @@ class AppStateDetector {
      */
     fun isMapScreen(frame: Bitmap): Boolean {
 
-        if (frame.width < MAP_SAMPLE_X2 || frame.height < MAP_SAMPLE_Y2) {
+        if (frame.width < COMPASS_CENTRE_X + RING_RADIUS + 1 || frame.height < COMPASS_CENTRE_Y + RING_RADIUS + 1) {
             Log.w("MHNDetect", "isMapScreen: frame too small (${frame.width}x${frame.height})")
             return false
         }
 
-        val w      = MAP_SAMPLE_X2 - MAP_SAMPLE_X1
-        val h      = MAP_SAMPLE_Y2 - MAP_SAMPLE_Y1
-        val pixels = IntArray(w * h)
-        frame.getPixels(pixels, 0, w, MAP_SAMPLE_X1, MAP_SAMPLE_Y1, w, h)
+        // TODO: only sample ring if centre matches (skipped for now to log both during calibration)
+        val isCompassCentre = isValidCompassCentre(frame)
+        val isCompassRing = isValidCompassRing(frame)
+        val result = isCompassCentre && isCompassRing
+
+        Log.d("MHNDetect", "isMapScreen: compass centre = $isCompassCentre, " +
+                "compass ring = $isCompassRing")
+        return result
+    }
+
+    private fun isValidCompassCentre(frame: Bitmap): Boolean {
+        val averageRgb = averageSample(frame, COMPASS_CENTRE_X, COMPASS_CENTRE_Y, 5)
+        val pointType = classifyPoint(averageRgb)
+
+        // pointType expected to be NEEDLE as we are averaging across a mix of red + brown, but red/brown would be acceptable
+        return pointType == PointType.NEEDLE || pointType == PointType.RED || pointType == PointType.BROWN
+    }
+
+    private fun isValidCompassRing(frame: Bitmap): Boolean {
+        val ringSamples = (0 until 8).map { i ->
+            val angle = Math.toRadians(i * 45.0)
+            val px = COMPASS_CENTRE_X + (RING_RADIUS * cos(angle)).roundToInt()
+            val py = COMPASS_CENTRE_Y + (RING_RADIUS * sin(angle)).roundToInt()
+            // expression for IDE watch to check sample: Bitmap.createBitmap(frame, px, py, 3, 3)
+            averageSample(frame, px, py, halfSize = 1)
+        }
+
+        return isValidCompassRing(ringSamples)
+    }
+
+    private fun isValidCompassRing(points: List<RgbSample>): Boolean {
+        val pointClassification = points.map {
+            classifyPoint(it)
+        }
+
+//        println(points)
+//        println(pointClassification)
+//        Log.d("MHNDetect", "isValidCompassRing: RgbSamples=")
+        Log.d("MHNDetect", "isValidCompassRing: PointTypes=")
+
+        val countCream = pointClassification.count { it == PointType.CREAM }
+        if (countCream < 6) return false
+        if (countCream >= 7) return true // edges of needle may classify as OTHER or CREAM due to anti-aliasing
+        // leaving only cases where countCream is 6 - we require the non-cream points to be opposite sides of the ring
+        for (i in 0..3) {
+            val testList = listOf(pointClassification[i], pointClassification[i+4])
+            if (
+                testList.count { it == PointType.CREAM } == 0 &&
+                testList.count { it == PointType.RED } <= 1 &&
+                testList.count { it == PointType.BROWN } <= 1
+                ) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun classifyPoint(sample: RgbSample): PointType {
+        val isCream = sample.g > RING_GB_MIN && sample.b > RING_GB_MIN
+        val isNeedle = sample.g < NEEDLE_GB_MAX && sample.b < NEEDLE_GB_MAX
+        val isRed = isNeedle && sample.r > 180
+        val isBrown = isNeedle && sample.r <= 110
+        return when {
+            isRed    -> PointType.RED
+            isBrown  -> PointType.BROWN
+            isNeedle -> PointType.NEEDLE
+            isCream  -> PointType.CREAM
+            else     -> PointType.OTHER
+        }
+    }
+
+    private fun averageSample(frame: Bitmap, centreX: Int, centreY: Int, halfSize: Int): RgbSample {
+        val size = halfSize * 2 + 1
+        val x0 = centreX - halfSize
+        val y0 = centreY - halfSize
+        val pixels = IntArray(size * size)
+        frame.getPixels(pixels, 0, size, x0, y0, size, size)
 
         var totalR = 0L;  var totalG = 0L;  var totalB = 0L
         for (px in pixels) {
@@ -136,54 +216,7 @@ class AppStateDetector {
         }
 
         val count  = pixels.size
-        val meanR  = totalR.toDouble() / count
-        val meanG  = totalG.toDouble() / count
-        val meanB  = totalB.toDouble() / count
-        val meanAll = (meanR + meanG + meanB) / 3.0
 
-        val bright = meanAll >= MAP_BRIGHT_MIN
-        val grey   = (meanR - meanB) < MAP_SAT_MAX
-
-        val result = bright && grey
-        Log.d("MHNDetect", "isMapScreen: meanRGB=(${"%.1f".format(meanR)}," +
-                "${"%.1f".format(meanG)},${"%.1f".format(meanB)}) " +
-                "bright=$bright grey=$grey result=$result")
-        return result
-    }
-
-    private fun isValidCompassRing(points: List<RgbSample>): Boolean {
-        val pointClassification = points.map {
-            val isCream = it.g > RING_GB_MIN && it.b > RING_GB_MIN
-            val isNeedle = it.g < NEEDLE_GB_MAX && it.b < NEEDLE_GB_MAX
-            val isRed = isNeedle && it.r > 180
-            val isBrown = isNeedle && it.r <= 110
-
-            when {
-                isRed    -> PointType.RED
-                isBrown  -> PointType.BROWN
-                isNeedle -> PointType.NEEDLE
-                isCream  -> PointType.CREAM
-                else     -> PointType.OTHER
-            }
-        }
-
-        val countCream = pointClassification.count { it == PointType.CREAM }
-        if (countCream < 6) return false
-        if (countCream == 8) return true
-        if (countCream == 7 && (pointClassification.contains(PointType.RED) || pointClassification.contains(PointType.BROWN) || pointClassification.contains(PointType.NEEDLE))) return true
-        if (countCream == 6) {
-            for (i in 0..3) {
-                val testList = listOf(pointClassification[i], pointClassification[i+4])
-                if (
-                    testList.count { it == PointType.CREAM } == 0 &&
-                    testList.count { it == PointType.RED } <= 1 &&
-                    testList.count { it == PointType.BROWN } <= 1
-                    ) {
-                    return true
-                }
-            }
-        }
-
-        return false
+        return RgbSample(totalR.toDouble() / count, totalG.toDouble() / count, totalB.toDouble() / count)
     }
 }
