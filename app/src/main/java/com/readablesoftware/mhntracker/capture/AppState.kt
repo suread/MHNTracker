@@ -8,11 +8,17 @@ import kotlinx.coroutines.flow.StateFlow
  * Written by ScreenCaptureService, read by OverlayBubbleService.
  * Using an object (singleton) avoids needing a shared Application subclass.
  */
+enum class CaptureStatus {
+    INACTIVE,       // no MediaProjection
+    ACTIVE,         // MediaProjection running, not in a fight
+    IN_FIGHT,       // MediaProjection running, fight in progress
+    FIGHT_TERMINATED // FightHandler onTerminate was called
+}
 object AppState {
-    private val _mediaProjectionActive = MutableStateFlow(false)
-    val mediaProjectionActive: StateFlow<Boolean> = _mediaProjectionActive
+    private val _mediaProjectionActive = MutableStateFlow(CaptureStatus.INACTIVE) // TODO - change name to reflect use of enum rather than boolean!
+    val mediaProjectionActive: StateFlow<CaptureStatus> = _mediaProjectionActive
 
-    fun setMediaProjectionActive(active: Boolean) {
+    fun setMediaProjectionActive(active: CaptureStatus) {
         _mediaProjectionActive.value = active
     }
 }

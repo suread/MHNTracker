@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -17,21 +16,47 @@ import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import com.readablesoftware.mhntracker.detection.AppStateDetector
 import com.readablesoftware.mhntracker.detection.FightEventDetector
+import com.readablesoftware.mhntracker.detection.FightHandler
+import com.readablesoftware.mhntracker.detection.FightStartDetector
+import com.readablesoftware.mhntracker.detection.HandlerStatus
 import com.readablesoftware.mhntracker.detection.HuntReportDetector
+import com.readablesoftware.mhntracker.detection.SessionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import android.util.Log
+import androidx.core.graphics.createBitmap
 
+/**
+ * Central router for MHN screen capture.
+ *
+ * Responsibilities:
+ *   - Owns MediaProjection, VirtualDisplay, and ImageReader.
+ *   - Runs a producer/consumer frame loop at 5fps.
+ *   - Performs per-frame screen-wide checks (black screen, map) that apply
+ *     regardless of which handler is active.
+ *   - Polls registered handlers at the slow-check rate to find one that wants
+ *     to activate, then routes frames to it until it finishes or is terminated.
+ *
+ * Handler lifecycle:
+ *   - Handlers are checked in registration order (priority order).
+ *   - At most one handler is active at a time.
+ *   - When a handler returns [HandlerStatus.DONE], it is deactivated and the
+ *     router returns to polling for the next trigger.
+ *   - When a map signal fires, the active handler (if any) is terminated via
+ *     [SessionHandler.onTerminate] and the router returns to idle polling.
+ *   - If two handlers both recognise their trigger on the same frame, the
+ *     first by registration order wins; an error is logged.
+ *
+ * Adding a new handler:
+ *   Construct it in [buildHandlers] and add it to the returned list. Priority
+ *   is determined by list order — time-critical / irreversible handlers first.
+ */
 class ScreenCaptureService : Service() {
 
     companion object {
@@ -39,9 +64,17 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "extra_result_data"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "mhn_capture_channel"
+
+        // Producer supplies frames at this fixed rate.
         private const val CAPTURE_INTERVAL_MS = 200L   // 5fps
-        private const val MAX_SESSION_FRAMES  = 300    // safety cap: 30 seconds at 10fps
+
         private const val FRAME_CHANNEL_CAPACITY = 2
+
+        // Slow checks (map detection, trigger polling) run every Nth frame
+        // consumed by the consumer. 3 × 200ms = 600ms between slow checks.
+        private const val SLOW_CHECK_EVERY_N_FRAMES = 3
+
+        private const val TAG = "MHNRouter"
     }
 
     private var mediaProjection: MediaProjection? = null
@@ -49,32 +82,25 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private var producerJob: Job? = null
     private var consumerJob: Job? = null
-    private var currentSessionDir: File? = null
 
-    // Written only by consumer. Read by producer if variable rates are added later.
-    @Volatile private var isCapturing = false
+    // All mutable state is owned exclusively by the consumer coroutine.
+    private var activeHandler: SessionHandler? = null
+    private var slowCheckCounter = 0
 
-    private var frameIndex = 0
+    // Handlers checked in priority order. Built once in onCreate.
+    private lateinit var handlers: List<SessionHandler>
 
-    private val detector by lazy { HuntReportDetector.create(this) }
-    private val fightEventDetector = FightEventDetector()
+    private val appStateDetector = AppStateDetector()
     private val serviceScope = CoroutineScope(Dispatchers.IO)
-
-    // Channel connecting producer to consumer. Fixed capacity; drop-oldest when full.
     private val frameChannel = Channel<Bitmap>(capacity = FRAME_CHANNEL_CAPACITY)
-
-    // Flat directory for break frames — created lazily on first save.
-    // All breaks across all fights land here, distinguished by timestamp filename.
-    private val breaksDir: File by lazy {
-        File(getExternalFilesDir(null), "breaks")
-    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        handlers = buildHandlers()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Waiting for hunt report"))
+        startForeground(NOTIFICATION_ID, buildNotification("Idle"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -83,7 +109,7 @@ class ScreenCaptureService : Service() {
             ?: return START_NOT_STICKY
 
         val projectionManager =
-            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
 
         setupVirtualDisplay()
@@ -92,9 +118,37 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
+    // ── Handler registration ──────────────────────────────────────────────
+
+    /**
+     * Constructs and returns the ordered list of session handlers.
+     * Priority is determined by list order — first entry is highest priority.
+     *
+     * To add a new handler: construct it here and insert it at the appropriate
+     * priority position. Time-critical / irreversible activities (fight) come
+     * before recoverable ones (inventory).
+     */
+    private fun buildHandlers(): List<SessionHandler> {
+        val baseDir = getExternalFilesDir(null) ?: filesDir
+
+        val fightHandler = FightHandler(
+            fightStartDetector = FightStartDetector.create(this),
+            huntReportDetector = HuntReportDetector.create(this),
+            fightEventDetector = FightEventDetector(),
+            baseDir            = baseDir,
+        )
+
+        // Registration order = priority order.
+        // Add future handlers (InventoryHandler, etc.) below fightHandler.
+        return listOf(fightHandler)
+    }
+
+    // ── Virtual display ───────────────────────────────────────────────────
+
     private fun setupVirtualDisplay() {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getMetrics(metrics)
 
         val width  = metrics.widthPixels
@@ -103,11 +157,11 @@ class ScreenCaptureService : Service() {
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
-        mediaProjection?.registerCallback(object : MediaProjection.Callback() {  // lambda: anonymous class
+        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
                 virtualDisplay?.release()
                 imageReader?.close()
-                AppState.setMediaProjectionActive(false)
+                AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
                 stopSelf()
             }
         }, null)
@@ -120,14 +174,17 @@ class ScreenCaptureService : Service() {
             null, null
         )
 
-        AppState.setMediaProjectionActive(true)
+        AppState.setMediaProjectionActive(CaptureStatus.ACTIVE)
+
     }
+
+    // ── Frame loop ────────────────────────────────────────────────────────
 
     private fun startFrameLoop() {
 
-        // ── Producer ─────────────────────────────────────────────────────────
-        // Captures frames at a fixed rate. Never blocks on detection.
-        // If the channel is full, drops the oldest frame and sends the new one.
+        // ── Producer ─────────────────────────────────────────────────────
+        // Captures at fixed 5fps. Knows nothing about app state or handlers.
+        // Drops the oldest frame if the consumer is busy.
         producerJob = serviceScope.launch {
             while (true) {
                 val frameStart = System.currentTimeMillis()
@@ -146,128 +203,163 @@ class ScreenCaptureService : Service() {
             }
         }
 
-        // ── Consumer ─────────────────────────────────────────────────────────
-        // Runs detection on each frame. Owns all session state.
-        // Break detection is suppressed during hunt report capture.
+        // ── Consumer ─────────────────────────────────────────────────────
+        // Owns all routing state. Processes or discards each frame.
         consumerJob = serviceScope.launch {
             for (bitmap in frameChannel) {
                 val t0 = System.currentTimeMillis()
-
-                if (isCapturing) {
-                    // ── isConfirmButtonVisible ────────────────────────────
-                    val t1 = System.currentTimeMillis()
-                    val confirmVisible = detector.isConfirmButtonVisible(bitmap)
-                    Log.d("MHNTiming", "isConfirmButtonVisible: ${System.currentTimeMillis() - t1}ms  result=$confirmVisible")
-
-                    when {
-                        confirmVisible -> {
-                            Log.d("MHNCapture", "Confirm button detected — stopping capture, saved $frameIndex frames")
-                            saveFrame(bitmap)
-                            isCapturing = false
-                            currentSessionDir = null
-                            updateNotification("Waiting for hunt report")
-                        }
-                        frameIndex >= MAX_SESSION_FRAMES -> {
-                            Log.w("MHNCapture", "Frame cap reached ($MAX_SESSION_FRAMES) — stopping capture without confirm button")
-                            isCapturing = false
-                            currentSessionDir = null
-                            updateNotification("Waiting for hunt report")
-                        }
-                        else -> {
-                            Log.d("MHNCapture", "Capturing frame $frameIndex")
-                            saveFrame(bitmap)
-                        }
-                    }
-
-                } else {
-                    // ── isHuntReportScreen ────────────────────────────────
-                    val t1 = System.currentTimeMillis()
-                    val huntVisible = detector.isHuntReportScreen(bitmap)
-                    Log.d("MHNTiming", "isHuntReportScreen: ${System.currentTimeMillis() - t1}ms  result=$huntVisible")
-
-                    if (huntVisible) {
-                        Log.d("MHNCapture", "Hunt report detected — starting capture")
-                        isCapturing = true
-                        frameIndex = 0
-                        currentSessionDir = createSessionDir()
-                        updateNotification("Capturing hunt report")
-                        saveFrame(bitmap)
-                    }
-
-                    // ── isBreakVisible ────────────────────────────────────
-                    // Suppressed during hunt report capture — no breaks occur
-                    // on the rewards screen.
-                    val t2 = System.currentTimeMillis()
-                    val breakVisible = fightEventDetector.isBreakVisible(bitmap)
-                    Log.d("MHNTiming", "isBreakVisible: ${System.currentTimeMillis() - t2}ms  result=$breakVisible")
-
-                    if (breakVisible) {
-                        Log.d("MHNCapture", "BREAK detected — saving break frame")
-                        saveBreakFrame(bitmap)
-                    }
-                }
-
-                Log.d("MHNTiming", "consumer: total ${System.currentTimeMillis() - t0}ms  isCapturing=$isCapturing")
+                routeFrame(bitmap)
+                Log.d("MHNTiming", "consumer total: ${System.currentTimeMillis() - t0}ms  " +
+                        "activeHandler=${activeHandler?.javaClass?.simpleName ?: "none"}")
             }
         }
     }
 
+    // ── Per-frame routing ─────────────────────────────────────────────────
+
+    /**
+     * Main per-frame dispatch. Called by the consumer for every received frame.
+     *
+     * Order:
+     *   1. Black screen pre-filter — cheapest check, gates everything else.
+     *   2. Slow checks (every [SLOW_CHECK_EVERY_N_FRAMES]):
+     *        a. Map detection — terminates the active handler if map is visible.
+     *        b. Trigger polling — if no handler is active, ask each handler
+     *           in priority order whether it recognises its trigger.
+     *   3. Active handler dispatch — if a handler is active, send it the frame.
+     */
+    private fun routeFrame(bitmap: Bitmap) {
+
+        // ── 1. Black screen pre-filter ────────────────────────────────────
+        val t1 = System.currentTimeMillis()
+        if (appStateDetector.isBlackScreen(bitmap)) {
+            Log.d("MHNTiming", "isBlackScreen: ${System.currentTimeMillis() - t1}ms  result=true")
+            Log.d(TAG, "Black screen — skipping all detection")
+            // TODO: signal overlay bubble to hide when overlay is implemented
+            return
+        }
+        Log.d("MHNTiming", "isBlackScreen: ${System.currentTimeMillis() - t1}ms  result=false")
+
+        // ── 2. Slow checks ────────────────────────────────────────────────
+        slowCheckCounter++
+        if (slowCheckCounter % SLOW_CHECK_EVERY_N_FRAMES == 0) {
+
+            // 2a. Map detection — valid in any state
+            val t2 = System.currentTimeMillis()
+            val mapVisible = appStateDetector.isMapScreen(bitmap)
+            Log.d("MHNTiming", "isMapScreen: ${System.currentTimeMillis() - t2}ms  result=$mapVisible")
+
+            if (mapVisible) {
+                Log.d(TAG, "Map detected — terminating active handler " +
+                        "(${activeHandler?.javaClass?.simpleName ?: "none"})")
+                activeHandler?.onTerminate()
+                activeHandler = null
+                updateNotification("Idle")
+                return
+            }
+
+            // 2b. Trigger polling — only when no handler is active
+            if (activeHandler == null) {
+                pollTriggers(bitmap)
+                // If a handler was just activated by pollTriggers, it has
+                // already consumed this frame via recognisesTrigger — return
+                // without calling onFrame.
+                if (activeHandler != null) return
+            }
+        }
+
+        // ── 3. Active handler dispatch ────────────────────────────────────
+        val handler = activeHandler ?: return   // idle, nothing to dispatch
+
+        val t3 = System.currentTimeMillis()
+        val status = handler.onFrame(bitmap)
+        Log.d("MHNTiming", "handler.onFrame: ${System.currentTimeMillis() - t3}ms  status=$status")
+
+        if (status == HandlerStatus.DONE) {
+            Log.d(TAG, "Handler ${handler.javaClass.simpleName} finished")
+            activeHandler = null
+            AppState.setMediaProjectionActive(CaptureStatus.ACTIVE) // MediaProjection is active, fight not being recorded
+            updateNotification("Idle")
+        }
+    }
+
+    /**
+     * Polls each registered handler in priority order to find one that
+     * recognises its trigger on this frame.
+     *
+     * Activates the first handler that returns true from [SessionHandler
+     * .recognisesTrigger]. If more than one handler fires, logs an error —
+     * this indicates overlapping trigger conditions that should be investigated.
+     *
+     * The frame is considered consumed by [SessionHandler.recognisesTrigger]
+     * — the caller must not forward it to [SessionHandler.onFrame].
+     */
+    private fun pollTriggers(bitmap: Bitmap) {
+        var activated: SessionHandler? = null
+
+        for (handler in handlers) {
+            val t = System.currentTimeMillis()
+            val triggered = handler.recognisesTrigger(bitmap)
+            Log.d("MHNTiming", "${handler.javaClass.simpleName}.recognisesTrigger: " +
+                    "${System.currentTimeMillis() - t}ms  result=$triggered")
+
+            if (triggered) {
+                if (activated == null) {
+                    activated = handler
+                    activeHandler = handler
+                    val name = handler.javaClass.simpleName
+                    AppState.setMediaProjectionActive(CaptureStatus.IN_FIGHT)
+                    Log.d(TAG, "Handler activated: $name")
+                    updateNotification(notificationTextFor(handler))
+                } else {
+                    // Two triggers fired on the same frame — log error but
+                    // continue: first-by-priority handler stays active.
+                    Log.e(TAG, "Multiple handlers triggered on the same frame! " +
+                            "Active: ${activated.javaClass.simpleName}, " +
+                            "ignored: ${handler.javaClass.simpleName}. " +
+                            "Review trigger conditions for overlap.")
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns a human-readable notification status string for the given handler.
+     * Extend this when new handlers are added.
+     */
+    private fun notificationTextFor(handler: SessionHandler): String {
+        return when (handler) {
+            is FightHandler -> "Fight in progress"
+            else            -> "Capture active"
+        }
+    }
+
+    // ── Frame capture ─────────────────────────────────────────────────────
+
     private fun captureFrame(): Bitmap? {
         val image = imageReader?.acquireLatestImage() ?: return null
         return try {
-            val planes = image.planes
-            val buffer = planes[0].buffer
+            val planes      = image.planes
+            val buffer      = planes[0].buffer
             val pixelStride = planes[0].pixelStride
             val rowStride   = planes[0].rowStride
             val rowPadding  = rowStride - pixelStride * image.width
 
-            val bitmap = Bitmap.createBitmap(
-                image.width + rowPadding / pixelStride,
-                image.height,
-                Bitmap.Config.ARGB_8888
-            )
+            val bitmap = createBitmap(image.width + rowPadding / pixelStride, image.height)
             bitmap.copyPixelsFromBuffer(buffer)
             bitmap
         } finally {
-            image.close()  // must always be closed
+            image.close()
         }
     }
 
-    private fun saveFrame(bitmap: Bitmap) {
-        val dir = currentSessionDir ?: return
-        val file = File(dir, "frame_${frameIndex.toString().padStart(4, '0')}.png")
-        FileOutputStream(file).use { stream ->  // lambda
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-        frameIndex++
-    }
-
-    private fun saveBreakFrame(bitmap: Bitmap) {
-        getExternalFilesDir(null)?.mkdirs()  // recreate if deleted mid-run
-        breaksDir.mkdirs()  // no-op if exists, recreates if deleted between pulls
-        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date())
-        val file = File(breaksDir, "break_$timestamp.png")
-        FileOutputStream(file).use { stream ->  // lambda
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-        Log.d("MHNCapture", "Break frame saved: ${file.name}")
-    }
-
-    private fun createSessionDir(): File {
-        getExternalFilesDir(null)?.mkdirs()  // recreate if deleted mid-run
-        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.UK).format(Date())
-        val dir = File(getExternalFilesDir(null), "sessions/$timestamp")
-        dir.mkdirs()
-        return dir
-    }
+    // ── Notification ──────────────────────────────────────────────────────
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            CHANNEL_ID,
-            "MHN Capture",
-            NotificationManager.IMPORTANCE_LOW
+            CHANNEL_ID, "MHN Capture", NotificationManager.IMPORTANCE_LOW
         )
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
     }
 
@@ -280,18 +372,22 @@ class ScreenCaptureService : Service() {
     }
 
     private fun updateNotification(status: String) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, buildNotification(status))
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onDestroy() {
         producerJob?.cancel()
         consumerJob?.cancel()
         frameChannel.close()
+        activeHandler?.onTerminate()
+        activeHandler = null
         virtualDisplay?.release()
         mediaProjection?.stop()
         imageReader?.close()
-        AppState.setMediaProjectionActive(false)
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
         super.onDestroy()
     }
 }
