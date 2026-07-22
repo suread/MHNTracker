@@ -2,10 +2,10 @@ package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
 import android.util.Log
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_X1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_Y1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_X2
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_Y2
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X1
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_Y1
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X2
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_Y2
 
 class FightEventDetector {
 
@@ -53,19 +53,19 @@ class FightEventDetector {
     fun isBreakVisible(frame: Bitmap): Boolean {
         val t0 = System.currentTimeMillis()
 
-        if (frame.width < BREAK_X2 || frame.height < BREAK_Y2) {
+        if (frame.width < BREAK_GRAPHIC_X2 || frame.height < BREAK_GRAPHIC_Y2) {
             Log.w("MHNDetect", "isBreakVisible: frame too small (${frame.width}x${frame.height})")
             return false
         }
 
-        val cropW  = BREAK_X2 - BREAK_X1
-        val cropH  = BREAK_Y2 - BREAK_Y1
+        val cropW  = BREAK_GRAPHIC_X2 - BREAK_GRAPHIC_X1
+        val cropH  = BREAK_GRAPHIC_Y2 - BREAK_GRAPHIC_Y1
         val pixels = IntArray(cropW * cropH)
 
         // Read pixels directly — no Bitmap.createBitmap crop needed.
         // getPixels extracts the region in one call, avoiding an intermediate
         // Bitmap allocation.
-        frame.getPixels(pixels, 0, cropW, BREAK_X1, BREAK_Y1, cropW, cropH)
+        frame.getPixels(pixels, 0, cropW, BREAK_GRAPHIC_X1, BREAK_GRAPHIC_Y1, cropW, cropH)
 
         var orangeCount  = 0
         val colHasOrange = BooleanArray(cropW)

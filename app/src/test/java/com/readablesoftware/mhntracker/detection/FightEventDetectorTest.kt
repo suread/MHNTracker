@@ -2,12 +2,10 @@ package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_X1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_X2
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_Y1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_Y2
-import java.io.File
-import kotlinx.coroutines.runBlocking
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X1
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X2
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_Y1
+import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_Y2
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -90,16 +88,16 @@ class FightEventDetectorTest {
         // produce orangeFrac = 1.0 and colCoverage = 1.0 — well above thresholds.
         // We fake a full-size frame by creating a bitmap large enough to contain
         // the BREAK crop region, filled black, with one orange pixel inside it.
-        val w      = BREAK_X2 + 1
-        val h      = BREAK_Y2 + 1
+        val w      = BREAK_GRAPHIC_X2 + 1
+        val h      = BREAK_GRAPHIC_Y2 + 1
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.BLACK)
 
         // Place an orange pixel at every position in the crop to guarantee
         // detection — we are testing the arithmetic, not threshold sensitivity.
         val orange = (0xFF shl 24) or (200 shl 16) or (100 shl 8) or 50  // R=200 G=100 B=50
-        for (y in BREAK_Y1 until BREAK_Y2) {
-            for (x in BREAK_X1 until BREAK_X2) {
+        for (y in BREAK_GRAPHIC_Y1 until BREAK_GRAPHIC_Y2) {
+            for (x in BREAK_GRAPHIC_X1 until BREAK_GRAPHIC_X2) {
                 bitmap.setPixel(x, y, orange)
             }
         }
