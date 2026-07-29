@@ -7,24 +7,16 @@ import android.util.Log
 
 /**
  * Detects the start of a fight by recognising the grey banner text that
- * appears briefly at the beginning of an encounter.
+ * appears briefly at the beginning of an encounter ("Let's Hunt!" /
+ * "Start Hunting...").
  *
  * Uses the same NCC template-matching approach as [HuntReportDetector].
  * [HuntReportDetector.bitmapToGrey] and [HuntReportDetector.ncc] are reused
  * directly — both are internal and visible within this package.
  *
- * TODO: to activate this detector:
- *   1. Capture a recording that includes a fight start.
- *   2. Extract a frame where the grey banner is fully visible.
- *   3. Measure the banner crop region and fill in the four BANNER_ constants.
- *   4. Crop the template from that frame and save as
- *      app/src/main/assets/fight_start_template.png
- *   5. Uncomment the bitmap loading code in [create] and [createFromFile].
- *   6. Run against positive and negative frames to tune [NCC_THRESHOLD].
- *
- * Until the TODO is resolved, [isFightStartVisible] always returns false.
- * The placeholder guard in [isFightStartVisible] is the only thing preventing
- * real detections — remove it once the template and constants are in place.
+ * TODO: no test coverage yet — validate BANNER_X1/Y1/X2/Y2 and
+ * [NCC_THRESHOLD] against real fight-start recordings (positive and negative
+ * frames), the way HuntReportDetectorTest does for [HuntReportDetector].
  */
 class FightStartDetector private constructor(
     private val templatesGrey: List<FloatArray>,
@@ -34,20 +26,20 @@ class FightStartDetector private constructor(
 
     companion object {
 
-        // TODO: tune once positive and negative frames are available.
-        // HuntReportDetector uses 0.85 — start there and adjust.
+        // HuntReportDetector uses 0.85 with good separation between positive
+        // and negative scores — reused here as a starting point, not yet
+        // independently validated for this detector (no test coverage yet).
         const val NCC_THRESHOLD = 0.85f
 
         private val TEMPLATE_ASSETS = listOf("lets_hunt_template.png", "start_hunting_template.png")
 
-        // TODO: measure from a fight-start recording (Pixel 7 full resolution).
-        // All four values must be > 0 and X2 > X1, Y2 > Y1.
-        // Currently set to 0 so the placeholder guard in isFightStartVisible
-        // keeps the stub safely inactive.
-        private const val BANNER_X1 = 365    // TODO: measure
-        private const val BANNER_Y1 = 565    // TODO: measure
-        private const val BANNER_X2 = 695    // TODO: measure (must be > BANNER_X1)
-        private const val BANNER_Y2 = 615    // TODO: measure (must be > BANNER_Y1)
+        // Width/height match the template PNGs exactly (330x50). Not yet
+        // validated against a real fight-start recording (no test coverage
+        // yet) — origin (X1, Y1) in particular is unconfirmed.
+        private const val BANNER_X1 = 365
+        private const val BANNER_Y1 = 565
+        private const val BANNER_X2 = 695
+        private const val BANNER_Y2 = 615
 
         /**
          * Production constructor — loads template from app assets.
