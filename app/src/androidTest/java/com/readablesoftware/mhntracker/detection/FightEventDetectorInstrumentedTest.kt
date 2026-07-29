@@ -10,6 +10,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
 
 @RunWith(AndroidJUnit4::class)
 class FightEventDetectorInstrumentedTest {
@@ -47,12 +48,4 @@ class FightEventDetectorInstrumentedTest {
         )
     }
 
-    private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
-        val path = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
-        val context = InstrumentationRegistry.getInstrumentation().context
-        return context.assets.open(path).use { stream ->
-            BitmapFactory.decodeStream(stream)
-                ?: error("Failed to decode bitmap from: $path")
-        }
-    }
 }

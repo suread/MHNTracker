@@ -2,47 +2,34 @@ package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import java.io.File
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.google.mlkit.common.MlKit
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
-import androidx.test.core.app.ApplicationProvider
-import com.readablesoftware.mhntracker.model.HuntResult
-import com.readablesoftware.mhntracker.model.MaterialDrop
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
-import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
-import com.readablesoftware.mhntracker.testutil.TestVideoLoader.loadTestVideo
-import org.junit.Ignore
-import com.readablesoftware.mhntracker.detection.FightStartDetector
+import kotlin.intArrayOf
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
-class FightStartDetectorTest {
+@RunWith(AndroidJUnit4::class)
+class FightStartDetectorInstrumentedTest {
 
     private lateinit var detector: FightStartDetector
 
-    // Paths to the production template assets, loaded directly from src/main/assets/
-    // so tests use the same file as production — no duplicate asset needed.
-    // This path is relative to the project root, which is the working directory
-    // when Robolectric tests run via Gradle.
-    private val templatePaths = listOf(
-        "src/main/assets/lets_hunt_template.png",
-        "src/main/assets/start_hunting_template.png"
-    )
-
     @Before
     fun setUp() {
-        // Load the production template via the file path constructor.
-        // All tests share the same detector instance — the template is fixed.
-        detector = FightStartDetector.createFromFile(templatePaths)
+        // Uses create(context) to load the template from app assets —
+        // confirms asset loading works correctly on real device hardware.
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        detector = FightStartDetector.create(context)
     }
 
     @Test
-    fun `fight start screen is recognised from frame with Lets Hunt text visible`() {
+    fun fight_start_screen_is_recognised_from_frame_with_lets_hunt_text_visible() {
         val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 0)
         assertTrue(
             "Radobaan Frame 0 should be recognised as hunt start screen",
@@ -51,7 +38,7 @@ class FightStartDetectorTest {
     }
 
     @Test
-    fun `fight start screen is recognised from frame with Start Hunting text visible`() {
+    fun fight_start_screen_is_recognised_from_frame_with_start_hunting_text_visible() {
         val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 1)
         assertTrue(
             "Rajang frame 1 should be recognised as hunt start screen",
@@ -60,7 +47,7 @@ class FightStartDetectorTest {
     }
 
     @Test
-    fun `map screen is not recognised as fight start`() {
+    fun map_screen_is_not_recognised_as_fight_start() {
         val frame = loadTestFrame("fight-start-detection/negative", frameIndex = 51)
         assertFalse(
             "Map frame 51 should not be recognised as hunt start screen",
@@ -69,7 +56,7 @@ class FightStartDetectorTest {
     }
 
     @Test
-    fun `hunt report screen is not recognised as fight start`() {
+    fun hunt_report_screen_is_not_recognised_as_fight_start() {
         val frame = loadTestFrame("fight-start-detection/negative", frameIndex = 15)
         assertFalse(
             "Hunt report frame 15 should not be recognised as hunt start screen",
@@ -78,7 +65,7 @@ class FightStartDetectorTest {
     }
 
     @Test
-    fun `waiting for hunters lobby screen is not recognised as fight start`() {
+    fun waiting_for_hunters_lobby_screen_is_not_recognised_as_fight_start() {
         val frame = loadTestFrame("fight-start-detection/negative", frameIndex = 3)
         assertFalse(
             "Lobby frame should not be recognised as hunt start screen",
@@ -87,13 +74,12 @@ class FightStartDetectorTest {
     }
 
     @Test
-    fun `frame too small to contain hunt starting text returns false`() {
+    fun frame_too_small_to_contain_hunt_starting_text_returns_false() {
         val tooSmall = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
         assertFalse(
             "Frame smaller than hunt starting text should return false without crashing",
             detector.isFightStartVisible(tooSmall)
         )
     }
-
 
 }
