@@ -42,3 +42,6 @@ utilities/frame_*.png
 
 # Personal/local project notes — not for the public repo
 /docs/local/
+
+# Personal reference scratch — not for the public repo
+app/src/test/java/com/readablesoftware/mhntracker/detection/old tests.txt
