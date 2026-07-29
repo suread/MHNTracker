@@ -60,6 +60,42 @@ class FightStartDetectorTest {
     }
 
     @Test
+    fun `fight start screen is recognised from frame 11 with Start Hunting text visible`() {
+        val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 11)
+        assertTrue(
+            "Frame 11 should be recognised as hunt start screen",
+            detector.isFightStartVisible(frame)
+        )
+    }
+
+    @Test
+    fun `fight start screen is recognised from frame 12 with Lets Hunt text visible`() {
+        val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 12)
+        assertTrue(
+            "Riftborne Zinogre frame 12 should be recognised as hunt start screen",
+            detector.isFightStartVisible(frame)
+        )
+    }
+
+    @Test
+    fun `fight start screen is recognised from frame 18 with Lets Hunt text visible in group hunt`() {
+        val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 18)
+        assertTrue(
+            "Viper Tobi-Kadachi group hunt frame 18 should be recognised as hunt start screen",
+            detector.isFightStartVisible(frame)
+        )
+    }
+
+    @Test
+    fun `fight start screen is recognised from frame 19 with Start Hunting text visible`() {
+        val frame = loadTestFrame("fight-start-detection/positive", frameIndex = 19)
+        assertTrue(
+            "Frame 19 should be recognised as hunt start screen",
+            detector.isFightStartVisible(frame)
+        )
+    }
+
+    @Test
     fun `map screen is not recognised as fight start`() {
         val frame = loadTestFrame("fight-start-detection/negative", frameIndex = 51)
         assertFalse(

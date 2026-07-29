@@ -14,9 +14,10 @@ import android.util.Log
  * [HuntReportDetector.bitmapToGrey] and [HuntReportDetector.ncc] are reused
  * directly — both are internal and visible within this package.
  *
- * TODO: no test coverage yet — validate BANNER_X1/Y1/X2/Y2 and
- * [NCC_THRESHOLD] against real fight-start recordings (positive and negative
- * frames), the way HuntReportDetectorTest does for [HuntReportDetector].
+ * BANNER_X1/Y1/X2/Y2 and [NCC_THRESHOLD] are validated against real
+ * fight-start recordings in FightStartDetectorTest and
+ * FightStartDetectorInstrumentedTest — positive frames span solo and
+ * group hunts, melee and bow HUD layouts, and both banner phrases.
  */
 class FightStartDetector private constructor(
     private val templatesGrey: List<FloatArray>,
@@ -27,15 +28,16 @@ class FightStartDetector private constructor(
     companion object {
 
         // HuntReportDetector uses 0.85 with good separation between positive
-        // and negative scores — reused here as a starting point, not yet
-        // independently validated for this detector (no test coverage yet).
+        // and negative scores — reused here as a starting point, and confirmed
+        // by FightStartDetectorTest/FightStartDetectorInstrumentedTest across
+        // several independently-sourced positive and negative frames.
         const val NCC_THRESHOLD = 0.85f
 
         private val TEMPLATE_ASSETS = listOf("lets_hunt_template.png", "start_hunting_template.png")
 
-        // Width/height match the template PNGs exactly (330x50). Not yet
-        // validated against a real fight-start recording (no test coverage
-        // yet) — origin (X1, Y1) in particular is unconfirmed.
+        // Width/height match the template PNGs exactly (330x50). Origin
+        // (X1, Y1) is confirmed by FightStartDetectorTest/
+        // FightStartDetectorInstrumentedTest against real fight-start frames.
         private const val BANNER_X1 = 365
         private const val BANNER_Y1 = 565
         private const val BANNER_X2 = 695
