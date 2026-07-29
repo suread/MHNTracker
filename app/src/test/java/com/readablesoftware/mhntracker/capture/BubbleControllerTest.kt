@@ -96,13 +96,13 @@ class BubbleControllerTest {
 
     @Test
     fun `onTap reflects current state at time of tap`() {
-        activeFlow.value = CaptureStatus.ACTIVE // TODO other active states
+        activeFlow.value = CaptureStatus.INACTIVE
         controller.onTap()
         val firstStarted = shadowOf(context).nextStartedActivity
         assertNotNull("First tap inactive — activity should start", firstStarted)
 
         // Clear shadow state and flip to active
-        activeFlow.value = CaptureStatus.INACTIVE
+        activeFlow.value = CaptureStatus.ACTIVE // TODO other active states
         controller.onTap()
         val stopped = shadowOf(context).nextStoppedService
         assertNotNull("Second tap active — service should stop", stopped)
