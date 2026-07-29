@@ -39,3 +39,6 @@ app/src/test/resources/fast-tap/
 # Utility binaries / scratch output
 utilities/*.exe
 utilities/frame_*.png
+
+# Personal/local project notes — not for the public repo
+/docs/local/
