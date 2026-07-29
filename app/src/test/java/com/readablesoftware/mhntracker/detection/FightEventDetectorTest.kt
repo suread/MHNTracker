@@ -14,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -88,8 +89,8 @@ class FightEventDetectorTest {
         // produce orangeFrac = 1.0 and colCoverage = 1.0 — well above thresholds.
         // We fake a full-size frame by creating a bitmap large enough to contain
         // the BREAK crop region, filled black, with one orange pixel inside it.
-        val w      = BREAK_GRAPHIC_X2 + 1
-        val h      = BREAK_GRAPHIC_Y2 + 1
+        val w = BREAK_GRAPHIC_X2 + 1
+        val h = BREAK_GRAPHIC_Y2 + 1
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.BLACK)
 
@@ -115,17 +116,5 @@ class FightEventDetectorTest {
             "Frame smaller than BREAK region should return false without crashing",
             detector.isBreakVisible(tooSmall)
         )
-    }
-
-    // -----------------------------------------------------------------------
-    // Helper
-    // -----------------------------------------------------------------------
-
-    private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
-        val path   = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
-        val stream = javaClass.classLoader!!.getResourceAsStream(path)
-            ?: error("Test resource not found: $path")
-        return BitmapFactory.decodeStream(stream)
-            ?: error("Failed to decode bitmap from: $path")
     }
 }

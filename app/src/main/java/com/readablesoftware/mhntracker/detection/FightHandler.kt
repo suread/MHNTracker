@@ -1,27 +1,17 @@
 package com.readablesoftware.mhntracker.detection
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.util.Log
 import com.readablesoftware.mhntracker.capture.AppState
 import com.readablesoftware.mhntracker.capture.CaptureStatus
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_X1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_X2
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_Y1
-import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_Y2
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
+import com.readablesoftware.mhntracker.export.BreakCropComposer
 import java.util.Locale
-import androidx.core.graphics.createBitmap
 
-data class BitmapWithTime(
-    val bitmap: Bitmap,
-    val timestamp: Long
-)
+
 /**
  * Session handler for a complete fight — from fight start through to the
  * hunt report confirm button.
@@ -75,7 +65,7 @@ class FightHandler(
     }
 
     // Break crops for analysis/storage
-    private var breakTextCrops = mutableListOf<BitmapWithTime>()
+    private var breakCropComposer = BreakCropComposer()
 
     // ── Sub-state ─────────────────────────────────────────────────────────
     private enum class SubState { WATCHING, CAPTURING }
@@ -94,6 +84,7 @@ class FightHandler(
      */
     override fun recognisesTrigger(frame: Bitmap): Boolean {
         val result = fightStartDetector.isFightStartVisible(frame)
+        breakCropComposer = BreakCropComposer()
         if (result) Log.d(TAG, "Fight start trigger recognised")
         return result
     }
@@ -149,8 +140,8 @@ class FightHandler(
         Log.d("MHNTiming", "isBreakVisible: ${System.currentTimeMillis() - t2}ms  result=$breakVisible")
 
         if (breakVisible) {
-            Log.d(TAG, "BREAK detected — saving break frame")
-            storeBreakCrop(frame)
+            Log.d(TAG, "BREAK detected — storing break frame")
+            breakCropComposer.addBreakFrame(frame)
 //            saveBreakFrame(frame)
         }
 
@@ -205,15 +196,6 @@ class FightHandler(
     }
 
     /**
-     * Add text area of break frame to breakTextCrops, adding time (epoch milliseconds)
-     */
-    private fun storeBreakCrop(bitmap: Bitmap) {
-        val epochMillis = System.currentTimeMillis()
-        val crop = Bitmap.createBitmap(bitmap, BREAK_TEXT_X1, BREAK_TEXT_Y1, BREAK_TEXT_X2-BREAK_TEXT_X1, BREAK_TEXT_Y2-BREAK_TEXT_Y1)
-        breakTextCrops.add(BitmapWithTime(crop, epochMillis))
-        Log.d(TAG, "Stored break text: ${SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date(epochMillis))}")
-    }
-    /**
      * Saves a break frame to the session directory.
      * Creates the session directory lazily on first call.
      * Break frames use a timestamp filename to distinguish multiple breaks
@@ -263,64 +245,12 @@ class FightHandler(
      */
     private fun resetSubState() {
         Log.d(TAG, "resetSubState")
+        val file = breakCropComposer.exportComposite(requireSessionDir())
+        Log.d(TAG, "Saved break crops: ${file.name}")
 
-        storeAndFlushBreakTextCrops()
         subState         = SubState.WATCHING
         sessionDir       = null
         reportFrameIndex = 0
     }
 
-    /**
-     * build contents of breakTextCrops into single bitmap and save to png then empty ready for more to be added
-     */
-    private fun storeAndFlushBreakTextCrops() {
-        // build contents of breakTextcrops into a single bitmap and then save as png
-        val borderLeft = 0 // will use if decide to make a grid instead of single column
-        val borderRight = 0
-        val borderTop = 20
-        val borderBottom = 40 // make this region large enough to hold the timestamp text
-        val borderColour = Color.BLACK
-        val textColor = Color.WHITE
-
-        val count = breakTextCrops.size
-        val width = borderLeft + (BREAK_TEXT_X2 - BREAK_TEXT_X1) + borderRight
-        val unitHeight = (borderTop + (BREAK_TEXT_Y2 - BREAK_TEXT_Y1) + borderBottom)
-        val totalHeight = count * unitHeight
-
-        Log.d("storeAndFlushBreakTextCrops", "Number of break crops: $count")
-
-        val output = createBitmap(width, totalHeight)
-        val canvas = Canvas(output)
-        canvas.drawColor(borderColour)
-
-        for (i in 0 until breakTextCrops.size) {
-            val xStart = borderLeft
-            val yStart = (unitHeight * i + borderTop)
-            val textX = borderLeft
-            val textY = (unitHeight * (i+1) - borderBottom) + 30
-            canvas.drawBitmap(breakTextCrops[i].bitmap, xStart.toFloat(), yStart.toFloat(), null)
-            val paint = Paint().apply {
-                color = textColor
-                textSize = 24f
-                isAntiAlias = true
-            }
-            canvas.drawText(
-                SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date(breakTextCrops[i].timestamp)),
-                textX.toFloat(), textY.toFloat(), paint)
-            Log.d("storeAndFlushBreakTextCrops", "crop index = $i; graphic location = ($xStart, $yStart); text location = ($textX, $textY)")
-
-        }
-
-        val dir = requireSessionDir()
-        dir.mkdirs()   // defensive: recreate if deleted mid-session
-        val file = File(dir, "break_crops.png")
-        FileOutputStream(file).use { stream ->
-            output.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-        Log.d(TAG, "Saved break crops: ")
-
-
-        breakTextCrops   = mutableListOf<BitmapWithTime>()
-
-    }
 }

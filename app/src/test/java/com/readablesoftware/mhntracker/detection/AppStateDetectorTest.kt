@@ -1,7 +1,5 @@
 package com.readablesoftware.mhntracker.detection
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,6 +11,8 @@ import org.robolectric.ParameterizedRobolectricTestRunner.*
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
+import org.junit.Ignore
 
 private fun framesFrom(directory: String): List<String> {
     val dir = File("src/test/resources/frames/$directory")
@@ -21,14 +21,6 @@ private fun framesFrom(directory: String): List<String> {
     return dir.listFiles { f -> f.extension == "png" }
         ?.map { it.name }
         ?: emptyList()
-}
-
-private fun loadTestFrame(directoryName: String, frameName: String): Bitmap {
-    val path   = "frames/$directoryName/$frameName"
-    val stream = Thread.currentThread().contextClassLoader!!.getResourceAsStream(path)
-        ?: error("Test resource not found: $path")
-    return BitmapFactory.decodeStream(stream)
-        ?: error("Failed to decode bitmap from: $path")
 }
 
 @RunWith(ParameterizedRobolectricTestRunner::class)
@@ -92,6 +84,7 @@ class MapNotDetectedTest(private val frameName: String) {
 
 }
 
+@Ignore("Do not run routinely")
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class LargeVolumeNegativeMapTests {

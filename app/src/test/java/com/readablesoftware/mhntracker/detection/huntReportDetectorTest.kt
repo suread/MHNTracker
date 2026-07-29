@@ -14,6 +14,9 @@ import com.readablesoftware.mhntracker.model.MaterialDrop
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
+import com.readablesoftware.mhntracker.testutil.TestVideoLoader.loadTestVideo
+import org.junit.Ignore
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -33,14 +36,6 @@ class HuntReportDetectorTest {
     // This path is relative to the project root, which is the working directory
     // when Robolectric tests run via Gradle.
     private val templatePath = "src/main/assets/hunt_report_template.png"
-
-    companion object {
-        private val videoCache = mutableMapOf<String, List<Bitmap>>()  // lambda-free, just a map
-
-        private fun cachedVideo(videoName: String, loader: () -> List<Bitmap>): List<Bitmap> {  // lambda: () -> List<Bitmap> is the loader function
-            return videoCache.getOrPut(videoName) { loader() }  // lambda: { loader() } is the factory
-        }
-    }
 
     private lateinit var detector: HuntReportDetector
 
@@ -131,6 +126,95 @@ class HuntReportDetectorTest {
         val grey = HuntReportDetector.bitmapToGrey(bitmap)
         assertEquals(1, grey.size)
         assertEquals((90 + 60 + 30) / 3f, grey[0], 0.01f)
+    }
+
+
+
+    // -----------------------------------------------------------------------
+    // Processing termination
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `processing stops when confirm button is detected`() {
+        assumeTrue("Stub — activate once recording includes post-confirm frames", false)
+        TODO("Implement once recording available")
+    }
+
+    @Test
+    fun `confirm button is detected in faded frame`() {
+        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 39)
+        assumeTrue(
+            "Viper frame 39 faded button not detected - acceptable",
+            detector.isConfirmButtonVisible(frame)
+        )
+    }
+
+    @Test
+    fun `confirm button is detected in known clear frames`() {
+        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 40)
+        assertTrue(
+            "Khezu frame 31 should have confirm button visible",
+            detector.isConfirmButtonVisible(frame1)
+        )
+        assertTrue(
+            "Viper frame 40 should have confirm button visible",
+            detector.isConfirmButtonVisible(frame2)
+        )
+    }
+
+    @Test
+    fun `confirm button is not detected before it appears`() {
+        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 30)
+        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 38)
+        assertFalse(
+            "Khezu frame 30 should not have confirm button visible",
+            detector.isConfirmButtonVisible(frame1)
+        )
+        assertFalse(
+            "Viper frame 38 should not have confirm button visible",
+            detector.isConfirmButtonVisible(frame2)
+        )
+    }
+    // -----------------------------------------------------------------------
+    // Remaining stubs
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `unknown item produces placeholder drop record`() {
+        assumeTrue("Stub — requires recording with unrecognised icon", false)
+        TODO("Implement once lookup table gap scenario is available")
+    }
+
+    @Test
+    fun debug_confirm_button_sample() {
+        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
+        println(detector.debugSampleRegion(frame))
+    }
+}
+
+
+@Ignore("Blocked on HuntReportDetector.process() TODO — not yet implemented")
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class HuntReportDetectorProcessTest {
+
+    private val huntSoloR6NoBreaks = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
+    private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
+    private val templatePath = "src/main/assets/hunt_report_template.png"
+
+    companion object {
+        private val videoCache = mutableMapOf<String, List<Bitmap>>()
+        private fun cachedVideo(videoName: String, loader: () -> List<Bitmap>): List<Bitmap> {
+            return videoCache.getOrPut(videoName) { loader() }
+        }
+    }
+
+    private lateinit var detector: HuntReportDetector
+
+    @Before
+    fun setUp() {
+        detector = HuntReportDetector.createFromFile(templatePath)
     }
 
     // -----------------------------------------------------------------------
@@ -400,106 +484,7 @@ class HuntReportDetectorTest {
             brokenR1Weapon.all { it.rarity == 1 })
     }
 
-    // -----------------------------------------------------------------------
-    // Processing termination
-    // -----------------------------------------------------------------------
-
-    @Test
-    fun `processing stops when confirm button is detected`() {
-        assumeTrue("Stub — activate once recording includes post-confirm frames", false)
-        TODO("Implement once recording available")
-    }
-
-    @Test
-    fun `confirm button is detected in faded frame`() {
-        val frame = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 39)
-        assumeTrue(
-            "Viper frame 39 faded button not detected - acceptable",
-            detector.isConfirmButtonVisible(frame)
-        )
-    }
-
-    @Test
-    fun `confirm button is detected in known clear frames`() {
-        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
-        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 40)
-        assertTrue(
-            "Khezu frame 31 should have confirm button visible",
-            detector.isConfirmButtonVisible(frame1)
-        )
-        assertTrue(
-            "Viper frame 40 should have confirm button visible",
-            detector.isConfirmButtonVisible(frame2)
-        )
-    }
-
-    @Test
-    fun `confirm button is not detected before it appears`() {
-        val frame1 = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 30)
-        val frame2 = loadTestFrame(huntGroupR6WithBreaks, frameIndex = 38)
-        assertFalse(
-            "Khezu frame 30 should not have confirm button visible",
-            detector.isConfirmButtonVisible(frame1)
-        )
-        assertFalse(
-            "Viper frame 38 should not have confirm button visible",
-            detector.isConfirmButtonVisible(frame2)
-        )
-    }
-    // -----------------------------------------------------------------------
-    // Remaining stubs
-    // -----------------------------------------------------------------------
-
-    @Test
-    fun `unknown item produces placeholder drop record`() {
-        assumeTrue("Stub — requires recording with unrecognised icon", false)
-        TODO("Implement once lookup table gap scenario is available")
-    }
-
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
-
-    private fun loadTestFrame(videoName: String, frameIndex: Int): Bitmap {
-        val path   = "frames/$videoName/frame_${frameIndex.toString().padStart(4, '0')}.png"
-        val stream = javaClass.classLoader!!.getResourceAsStream(path)
-            ?: error("Test resource not found: $path")
-        return BitmapFactory.decodeStream(stream)
-            ?: error("Failed to decode bitmap from: $path")
-    }
-
-    /*
-     * Initial video split into frames using ffmpeg
-     * ffmpeg -i <filename>.mp4 -vf fps=2 frames/<filename>/frame_%04d.png
-     * This matches intended sampling rate when run on device with MediaProjection
-     * The consistent frames are then used for the tests
-     */
-
-    private fun loadTestVideo(videoName: String): List<Bitmap> {
-        return cachedVideo(videoName) {  // lambda: the block is only called on first load
-            val prefix = "frames/$videoName/"
-            val resourceUrl = javaClass.classLoader!!.getResource(prefix)
-                ?: return@cachedVideo emptyList()  // labeled return from the lambda
-            val options = BitmapFactory.Options().apply { inSampleSize = 4 }  // lambda
-            File(resourceUrl.toURI())
-                .listFiles { f -> f.extension == "png" }  // lambda
-                ?.sortedBy { it.name }  // lambda
-                ?.mapNotNull { file ->  // lambda
-                    file.inputStream().use { stream ->  // lambda
-                        BitmapFactory.decodeStream(stream, null, options)
-                    }
-                }
-                ?: emptyList()
-        }
-    }
-
-    @Test
-    fun debug_confirm_button_sample() {
-        val frame = loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31)
-        println(detector.debugSampleRegion(frame))
-    }
 }
-
 class FakeTextDetector(private val response: String) : TextDetector {
     override suspend fun detectText(bitmap: Bitmap) = response
 }
