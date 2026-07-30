@@ -12,6 +12,9 @@ class HuntReportDetector private constructor(
     private val templateGrey: FloatArray,   // greyscale pixel values, row-major
     private val templateW:    Int,
     private val templateH:    Int,
+    private val rewardsTemplateGrey: FloatArray,
+    private val rewardsTemplateW:    Int,
+    private val rewardsTemplateH:    Int,
 ) {
 
     companion object {
@@ -23,31 +26,41 @@ class HuntReportDetector private constructor(
         const val NCC_THRESHOLD = 0.85f
 
         private const val TEMPLATE_ASSET = "hunt_report_template.png"
+        private const val REWARDS_TEMPLATE_ASSET = "rewards_template.png"
 
-        // Production constructor — loads template from app assets.
+        // Production constructor — loads templates from app assets.
         fun create(context: Context): HuntReportDetector {
             val bitmap = context.assets.open(TEMPLATE_ASSET).use { stream ->
                 BitmapFactory.decodeStream(stream)
                     ?: error("Failed to decode $TEMPLATE_ASSET from assets")
             }
-            return fromBitmap(bitmap)
+            val rewardsBitmap = context.assets.open(REWARDS_TEMPLATE_ASSET).use { stream ->
+                BitmapFactory.decodeStream(stream)
+                    ?: error("Failed to decode $REWARDS_TEMPLATE_ASSET from assets")
+            }
+            return fromBitmaps(bitmap, rewardsBitmap)
         }
 
-        // Test constructor — loads template from an absolute file path.
+        // Test constructor — loads templates from absolute file paths.
         // Use this in Robolectric tests to load directly from
-        // src/main/assets/ without duplicating the asset file.
-        // Example path: "src/main/assets/hunt_report_template.png"
-        fun createFromFile(path: String): HuntReportDetector {
+        // src/main/assets/ without duplicating the asset files.
+        // Example paths: "src/main/assets/hunt_report_template.png",
+        // "src/main/assets/rewards_template.png"
+        fun createFromFile(path: String, rewardsPath: String): HuntReportDetector {
             val bitmap = BitmapFactory.decodeFile(path)
                 ?: error("Failed to decode template from file: $path")
-            return fromBitmap(bitmap)
+            val rewardsBitmap = BitmapFactory.decodeFile(rewardsPath)
+                ?: error("Failed to decode template from file: $rewardsPath")
+            return fromBitmaps(bitmap, rewardsBitmap)
         }
 
-        private fun fromBitmap(bitmap: Bitmap): HuntReportDetector {
-            val w    = bitmap.width
-            val h    = bitmap.height
-            val grey = bitmapToGrey(bitmap)
-            return HuntReportDetector(grey, w, h)
+        private fun fromBitmaps(bitmap: Bitmap, rewardsBitmap: Bitmap): HuntReportDetector {
+            val grey        = bitmapToGrey(bitmap)
+            val rewardsGrey = bitmapToGrey(rewardsBitmap)
+            return HuntReportDetector(
+                grey, bitmap.width, bitmap.height,
+                rewardsGrey, rewardsBitmap.width, rewardsBitmap.height,
+            )
         }
 
         // Extract greyscale (mean of R, G, B) from a Bitmap into a FloatArray.
@@ -93,7 +106,25 @@ class HuntReportDetector private constructor(
     // Detection
     // -----------------------------------------------------------------------
 
+    /**
+     * Returns true if either the "Hunt Report" title or the "Rewards" section
+     * divider is visible. Two independent triggers for the same screen:
+     * the title can be obscured by stacked pop-ups (quest/event toasts) for
+     * long enough that it scrolls away unseen, whereas "Rewards" sits lower
+     * on the same static screen and is unaffected by that overlap.
+     */
     fun isHuntReportScreen(frame: Bitmap): Boolean {
+        return isTitleVisible(frame) || isRewardsHeaderVisible(frame)
+    }
+
+    /**
+     * Checks the "Hunt Report" title independently of [isRewardsHeaderVisible].
+     * Exposed (not private) so callers can tell which signal fired — used by
+     * [FightHandler] to log cases where the title fires but Rewards never
+     * does during the same capture, to gauge whether Rewards alone would be
+     * a safe sole trigger.
+     */
+    fun isTitleVisible(frame: Bitmap): Boolean {
         val t0 = System.currentTimeMillis()
 
         val cropW = RewardsScreenConstants.HUNT_REPORT_X2 - RewardsScreenConstants.HUNT_REPORT_X1
@@ -101,12 +132,12 @@ class HuntReportDetector private constructor(
 
         if (frame.width < RewardsScreenConstants.HUNT_REPORT_X2 ||
             frame.height < RewardsScreenConstants.HUNT_REPORT_Y2) {
-            Log.w("MHNDetect", "isHuntReportScreen: frame too small (${frame.width}x${frame.height})")
+            Log.w("MHNDetect", "isTitleVisible: frame too small (${frame.width}x${frame.height})")
             return false
         }
 
         if (cropW != templateW || cropH != templateH) {
-            Log.w("MHNDetect", "isHuntReportScreen: crop ${cropW}x${cropH} " +
+            Log.w("MHNDetect", "isTitleVisible: crop ${cropW}x${cropH} " +
                     "does not match template ${templateW}x${templateH}")
             return false
         }
@@ -121,7 +152,42 @@ class HuntReportDetector private constructor(
         val cropGrey = bitmapToGrey(crop)
         val score    = ncc(templateGrey, cropGrey)
 
-        Log.d("MHNDetect", "isHuntReportScreen: score=$score threshold=$NCC_THRESHOLD " +
+        Log.d("MHNDetect", "isTitleVisible: score=$score threshold=$NCC_THRESHOLD " +
+                "time=${System.currentTimeMillis() - t0}ms")
+
+        return score >= NCC_THRESHOLD
+    }
+
+    /** Checks the "Rewards" section divider independently of [isTitleVisible]. */
+    fun isRewardsHeaderVisible(frame: Bitmap): Boolean {
+        val t0 = System.currentTimeMillis()
+
+        val cropW = RewardsScreenConstants.REWARDS_X2 - RewardsScreenConstants.REWARDS_X1
+        val cropH = RewardsScreenConstants.REWARDS_Y2 - RewardsScreenConstants.REWARDS_Y1
+
+        if (frame.width < RewardsScreenConstants.REWARDS_X2 ||
+            frame.height < RewardsScreenConstants.REWARDS_Y2) {
+            Log.w("MHNDetect", "isRewardsHeaderVisible: frame too small (${frame.width}x${frame.height})")
+            return false
+        }
+
+        if (cropW != rewardsTemplateW || cropH != rewardsTemplateH) {
+            Log.w("MHNDetect", "isRewardsHeaderVisible: crop ${cropW}x${cropH} " +
+                    "does not match template ${rewardsTemplateW}x${rewardsTemplateH}")
+            return false
+        }
+
+        val crop     = Bitmap.createBitmap(
+            frame,
+            RewardsScreenConstants.REWARDS_X1,
+            RewardsScreenConstants.REWARDS_Y1,
+            cropW,
+            cropH,
+        )
+        val cropGrey = bitmapToGrey(crop)
+        val score    = ncc(rewardsTemplateGrey, cropGrey)
+
+        Log.d("MHNDetect", "isRewardsHeaderVisible: score=$score threshold=$NCC_THRESHOLD " +
                 "time=${System.currentTimeMillis() - t0}ms")
 
         return score >= NCC_THRESHOLD

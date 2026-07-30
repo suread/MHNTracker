@@ -98,4 +98,32 @@ class HuntReportDetectorInstrumentedTest {
         )
     }
 
+    // -----------------------------------------------------------------------
+    // "Rewards" trigger — confirms create(context) loads rewards_template.png
+    // from app assets correctly on real device hardware, mirroring the
+    // Robolectric coverage in HuntReportDetectorTest. See that file's
+    // "Rewards trigger" section for the motivation.
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun hunt_report_screen_is_recognised_via_title_when_rewards_not_yet_visible() {
+        val frame = loadTestFrame("hunt-report-rewards", frameIndex = 0)
+        assertTrue(detector.isHuntReportScreen(frame))
+    }
+
+    @Test
+    fun hunt_report_screen_is_recognised_when_both_title_and_rewards_are_visible() {
+        val frame = loadTestFrame("hunt-report-rewards", frameIndex = 5)
+        assertTrue(detector.isHuntReportScreen(frame))
+    }
+
+    @Test
+    fun hunt_report_screen_is_recognised_via_rewards_when_title_is_occluded() {
+        // Synthetic: frame_0005 with a solid block painted over the title
+        // crop region, simulating a stacked pop-up. No real example was
+        // available when this fixture was made — see HuntReportDetectorTest.
+        val frame = loadTestFrame("hunt-report-rewards", "frame_0005_title_occluded.png")
+        assertTrue(detector.isHuntReportScreen(frame))
+    }
+
 }

@@ -47,6 +47,7 @@ class FightHandlerTest {
     // Production template, loaded the same way as HuntReportDetectorTest —
     // relative to project root, the working directory for Gradle-run tests.
     private val templatePath = "src/main/assets/hunt_report_template.png"
+    private val rewardsTemplatePath = "src/main/assets/rewards_template.png"
 
     private lateinit var handler: FightHandler
     private lateinit var tempDirectory: File
@@ -75,7 +76,7 @@ class FightHandlerTest {
 
         handler = FightHandler(
             FightStartDetector.createFromFile(listOf(dummyTemplate)),
-            HuntReportDetector.createFromFile(templatePath),
+            HuntReportDetector.createFromFile(templatePath, rewardsTemplatePath),
             FightEventDetector(),
             tempDirectory
         )
@@ -255,5 +256,73 @@ class FightHandlerTest {
         assertEquals(1, breakCropsFiles?.size)
         // Not asserting composite content here — that's BreakCropComposerTest's
         // job. This only checks FightHandler correctly routes a break into it.
+    }
+
+    // ------------------------------------------------------------------
+    // Trigger-classification diagnostic — see FightHandler class doc.
+    // Every capture is logged as TITLE_ONLY, REWARDS_ONLY, or BOTH, so
+    // frequency of each can be compared once real data accumulates.
+    //
+    // Fixtures: real frames from an independent solo hunt (Malzeno), not
+    // used elsewhere:
+    //   frame_0000                  — title visible, Rewards not yet rendered
+    //   frame_0005                  — both visible
+    //   frame_0005_title_occluded   — synthetic: title painted over, Rewards
+    //                                 visible (simulates a stacked pop-up;
+    //                                 no real example was available)
+    // ------------------------------------------------------------------
+
+    private fun lastLogLine(): String {
+        val logFile = File(tempDirectory, "hunt_report_trigger_log.log")
+        assertTrue("trigger log should be written for every completed session", logFile.exists())
+        return logFile.readLines().last()
+    }
+
+    @Test
+    fun `session is classified TITLE_ONLY when Rewards never appears`() {
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 0))  // title only -> CAPTURING
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 0))  // still capturing, Rewards still not visible
+        handler.onFrame(confirmVisibleFrame())                                 // confirm -> session ends, Rewards never seen
+
+        assertTrue("expected TITLE_ONLY classification", lastLogLine().contains("TITLE_ONLY"))
+    }
+
+    @Test
+    fun `session is classified BOTH when Rewards appears later in the same capture`() {
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 0))  // title only -> CAPTURING
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 5))  // Rewards now visible too
+        handler.onFrame(confirmVisibleFrame())                                 // confirm -> session ends
+
+        assertTrue("expected BOTH classification", lastLogLine().contains("BOTH"))
+    }
+
+    @Test
+    fun `session is classified BOTH when title and Rewards trigger on the same frame`() {
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 5))  // both visible -> CAPTURING
+        handler.onFrame(confirmVisibleFrame())                                 // confirm -> session ends
+
+        assertTrue("expected BOTH classification", lastLogLine().contains("BOTH"))
+    }
+
+    @Test
+    fun `session is classified REWARDS_ONLY when title is occluded for the whole capture`() {
+        handler.onFrame(
+            loadTestFrame("hunt-report-rewards", "frame_0005_title_occluded.png")
+        )  // title occluded, Rewards visible -> CAPTURING via Rewards only
+        handler.onFrame(confirmVisibleFrame())  // confirm -> session ends, title never seen
+
+        assertTrue("expected REWARDS_ONLY classification", lastLogLine().contains("REWARDS_ONLY"))
+    }
+
+    @Test
+    fun `trigger log accumulates one line per completed session`() {
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 5))  // BOTH
+        handler.onFrame(confirmVisibleFrame())
+
+        handler.onFrame(loadTestFrame("hunt-report-rewards", frameIndex = 0))  // TITLE_ONLY
+        handler.onFrame(confirmVisibleFrame())
+
+        val logFile = File(tempDirectory, "hunt_report_trigger_log.log")
+        assertEquals(2, logFile.readLines().size)
     }
 }

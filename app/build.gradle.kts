@@ -89,22 +89,38 @@ dependencies {
 
 }
 
+// Shared by both backup tasks below so images and the trigger log from the
+// same test run land in the same image-backups/run-<timestamp>/ folder.
+val backupOutputDir = file("$rootDir/image-backups").apply { mkdirs() }
+val backupTimestamp = System.currentTimeMillis().toString()
+val backupDestDir = file("$backupOutputDir/run-$backupTimestamp")
+
 // Pulls image files off the device before instrumented tests wipe the app.
 tasks.register<Exec>("backupAppImages") {
-    val outputDir = file("$rootDir/image-backups").apply { mkdirs() }
-    val timestamp = System.currentTimeMillis().toString()
-    val destDir = file("$outputDir/run-$timestamp")
-
     commandLine(
         "adb", "pull",
         "/sdcard/Android/data/com.readablesoftware.mhntracker/files/sessions",
-        destDir.absolutePath
+        backupDestDir.absolutePath
     )
     isIgnoreExitValue = true // don't fail the build if the folder doesn't exist yet (first run)
 }
 
+// Pulls the Hunt Report trigger-classification diagnostic log (see
+// FightHandler.logTriggerClassification) off the device for the same reason —
+// instrumented tests wipe the app, and this data is being collected to decide
+// whether the "Hunt Report" title check can eventually be dropped.
+tasks.register<Exec>("backupTriggerLog") {
+    backupDestDir.mkdirs()
+    commandLine(
+        "adb", "pull",
+        "/sdcard/Android/data/com.readablesoftware.mhntracker/files/hunt_report_trigger_log.log",
+        backupDestDir.absolutePath
+    )
+    isIgnoreExitValue = true // don't fail the build if the log doesn't exist yet (first run)
+}
+
 afterEvaluate {
     tasks.named("connectedDebugAndroidTest") {
-        dependsOn("backupAppImages")
+        dependsOn("backupAppImages", "backupTriggerLog")
     }
 }

@@ -14,6 +14,8 @@ Android app that watches your own Monster Hunter Now gameplay screen and automat
 
 Early / personal-use stage — detection pipeline for fights and hunt reports is functional; not yet packaged for general use.
 
+Screen detection uses fixed pixel coordinates calibrated for a Pixel 7 screen and has not been tested on other devices/resolutions.
+
 ## Stack
 
 Kotlin, Android MediaProjection API, ML Kit Text Recognition, JUnit/Robolectric for detector tests.

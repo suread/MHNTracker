@@ -36,6 +36,7 @@ class HuntReportDetectorTest {
     // This path is relative to the project root, which is the working directory
     // when Robolectric tests run via Gradle.
     private val templatePath = "src/main/assets/hunt_report_template.png"
+    private val rewardsTemplatePath = "src/main/assets/rewards_template.png"
 
     private lateinit var detector: HuntReportDetector
 
@@ -43,7 +44,7 @@ class HuntReportDetectorTest {
     fun setUp() {
         // Load the production template via the file path constructor.
         // All tests share the same detector instance — the template is fixed.
-        detector = HuntReportDetector.createFromFile(templatePath)
+        detector = HuntReportDetector.createFromFile(templatePath, rewardsTemplatePath)
     }
 
     // -----------------------------------------------------------------------
@@ -83,6 +84,68 @@ class HuntReportDetectorTest {
             "Frame 31 (confirm button) should not be recognised as hunt report screen",
             detector.isHuntReportScreen(frame)
         )
+    }
+
+    // -----------------------------------------------------------------------
+    // Screen classification — "Rewards" trigger (alternative to title)
+    //
+    // Motivation: stacked pop-ups (quest/event toasts) can obscure the
+    // "Hunt Report" title for long enough that it scrolls away unseen before
+    // ever being detected. "Rewards" sits lower on the same static screen and
+    // is unaffected by that overlap, so isHuntReportScreen() now fires on
+    // either signal. Fixtures are real device frames from three independent
+    // solo hunts (different monsters/star ratings) confirming the "Rewards"
+    // crop position is fixed regardless of hunt content.
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `hunt report screen is recognised via title when Rewards is not yet visible`() {
+        // frame_0000: "Hunt Report" title fully visible; "Rewards" has not
+        // rendered yet. Confirms the OR'd check still fires immediately via
+        // the title path — adding the Rewards template must not regress or
+        // delay the existing early-detection behaviour.
+        val frame = loadTestFrame("hunt-report-rewards", frameIndex = 0)
+        assertTrue(
+            "Frame 0 (title visible, Rewards not yet rendered) should be recognised",
+            detector.isHuntReportScreen(frame)
+        )
+    }
+
+    @Test
+    fun `hunt report screen is recognised when both title and Rewards are visible`() {
+        // frame_0005: both signals visible simultaneously — the normal case.
+        val frame = loadTestFrame("hunt-report-rewards", frameIndex = 5)
+        assertTrue(
+            "Frame 5 (title and Rewards both visible) should be recognised",
+            detector.isHuntReportScreen(frame)
+        )
+    }
+
+    @Test
+    fun `hunt report screen is recognised via Rewards header when title is occluded`() {
+        // No real recording of a pop-up obscuring the title was available at
+        // the time this test was written (the failure is real but not
+        // reliably reproducible on demand) — this fixture is frame_0005 with
+        // a solid block painted over the HUNT_REPORT_X1/Y1/X2/Y2 region,
+        // simulating an opaque stacked pop-up. "Rewards" is untouched below
+        // it. Revisit with a genuine captured example if one turns up.
+        val frame = loadTestFrame("hunt-report-rewards", "frame_0005_title_occluded.png")
+        assertTrue(
+            "Frame with title occluded but Rewards visible should still be recognised",
+            detector.isHuntReportScreen(frame)
+        )
+    }
+
+    @Test
+    fun `title check returns false without throwing when frame is smaller than the crop region`() {
+        val tinyFrame = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+        assertFalse(detector.isTitleVisible(tinyFrame))
+    }
+
+    @Test
+    fun `rewards check returns false without throwing when frame is smaller than the crop region`() {
+        val tinyFrame = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+        assertFalse(detector.isRewardsHeaderVisible(tinyFrame))
     }
 
     // -----------------------------------------------------------------------
@@ -202,6 +265,7 @@ class HuntReportDetectorProcessTest {
     private val huntSoloR6NoBreaks = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
     private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
     private val templatePath = "src/main/assets/hunt_report_template.png"
+    private val rewardsTemplatePath = "src/main/assets/rewards_template.png"
 
     companion object {
         private val videoCache = mutableMapOf<String, List<Bitmap>>()
@@ -214,7 +278,7 @@ class HuntReportDetectorProcessTest {
 
     @Before
     fun setUp() {
-        detector = HuntReportDetector.createFromFile(templatePath)
+        detector = HuntReportDetector.createFromFile(templatePath, rewardsTemplatePath)
     }
 
     // -----------------------------------------------------------------------

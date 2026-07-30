@@ -5,8 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 
 object TestFrameLoader {
-    fun loadTestFrame(directoryName: String, frameIndex: Int): Bitmap {
-        val path = "frames/$directoryName/frame_${frameIndex.toString().padStart(4, '0')}.png"
+    fun loadTestFrame(directoryName: String, frameIndex: Int): Bitmap =
+        loadTestFrame(directoryName, "frame_${frameIndex.toString().padStart(4, '0')}.png")
+
+    fun loadTestFrame(directoryName: String, frameName: String): Bitmap {
+        val path = "frames/$directoryName/$frameName"
         val context = InstrumentationRegistry.getInstrumentation().context
         return context.assets.open(path).use { stream ->
             BitmapFactory.decodeStream(stream)

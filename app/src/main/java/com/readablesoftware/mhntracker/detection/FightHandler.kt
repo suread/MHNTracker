@@ -51,6 +51,17 @@ import java.util.Locale
  *   On forced termination ([onTerminate]): session directory is kept — partial
  *   sessions may still be useful. A marker file is written to indicate the
  *   session did not complete normally.
+ *
+ * Trigger-classification diagnostic (temporary):
+ *   [HuntReportDetector.isHuntReportScreen] fires on "Hunt Report" title OR
+ *   "Rewards" divider. Every capture is classified — TITLE_ONLY, REWARDS_ONLY,
+ *   or BOTH, based on whether each signal was ever seen (at trigger time or
+ *   during CAPTURING) — and appended to `hunt_report_trigger_log.log` in
+ *   [baseDir] by [logTriggerClassification]. Logging every session (not just
+ *   the interesting ones) gives a denominator: a handful of TITLE_ONLY entries
+ *   means little without knowing how many BOTH/REWARDS_ONLY sessions there
+ *   were too. The question this answers: does Rewards reliably fire whenever
+ *   the title does, i.e. could the title check eventually be dropped?
  */
 class FightHandler(
     private val fightStartDetector:  FightStartDetector,
@@ -77,6 +88,13 @@ class FightHandler(
     // ── Session directory — created lazily on first save ──────────────────
     private var sessionDir: File? = null
     private var reportFrameIndex = 0
+
+    // ── Trigger-classification diagnostic ──────────────────────────────────
+    // Temporary instrumentation — see class doc "Trigger-classification
+    // diagnostic". Tracks whether each signal has been seen yet *this*
+    // capture; once true, stays true (no need to keep re-checking).
+    private var titleSeenThisSession = false
+    private var rewardsSeenThisSession = false
 
     // ── SessionHandler ────────────────────────────────────────────────────
 
@@ -113,6 +131,7 @@ class FightHandler(
      */
     override fun onTerminate() {
         Log.d(TAG, "Handler terminated externally in sub-state=$subState")
+        logTriggerClassification()
         writeIncompleteMarker()
         resetSubState()
         AppState.setMediaProjectionActive(CaptureStatus.FIGHT_TERMINATED)
@@ -127,13 +146,17 @@ class FightHandler(
      */
     private fun processWatching(frame: Bitmap): HandlerStatus {
         val t1 = System.currentTimeMillis()
-        val huntVisible = huntReportDetector.isHuntReportScreen(frame)
+        val titleVisible = huntReportDetector.isTitleVisible(frame)
+        val rewardsVisible = huntReportDetector.isRewardsHeaderVisible(frame)
+        val huntVisible = titleVisible || rewardsVisible
         Log.d("MHNTiming", "isHuntReportScreen: ${System.currentTimeMillis() - t1}ms  result=$huntVisible")
 
         if (huntVisible) {
             Log.d(TAG, "Hunt report detected — switching to CAPTURING")
             subState = SubState.CAPTURING
             reportFrameIndex = 0
+            titleSeenThisSession = titleVisible
+            rewardsSeenThisSession = rewardsVisible
             saveReportFrame(frame)
             return HandlerStatus.CONTINUE
         }
@@ -155,6 +178,13 @@ class FightHandler(
      * frame cap is reached.
      */
     private fun processCapturing(frame: Bitmap): HandlerStatus {
+        if (!titleSeenThisSession && huntReportDetector.isTitleVisible(frame)) {
+            titleSeenThisSession = true
+        }
+        if (!rewardsSeenThisSession && huntReportDetector.isRewardsHeaderVisible(frame)) {
+            rewardsSeenThisSession = true
+        }
+
         val t1 = System.currentTimeMillis()
         val confirmVisible = huntReportDetector.isConfirmButtonVisible(frame)
         Log.d("MHNTiming", "isConfirmButtonVisible: ${System.currentTimeMillis() - t1}ms  result=$confirmVisible")
@@ -163,12 +193,14 @@ class FightHandler(
             confirmVisible -> {
                 Log.d(TAG, "Confirm button detected — session complete, " +
                         "$reportFrameIndex report frames saved")
+                logTriggerClassification()
                 saveReportFrame(frame)
                 resetSubState()
                 HandlerStatus.DONE
             }
             reportFrameIndex >= MAX_REPORT_FRAMES -> {
                 Log.w(TAG, "Frame cap reached ($MAX_REPORT_FRAMES) — ending session")
+                logTriggerClassification()
                 writeIncompleteMarker()
                 resetSubState()
                 HandlerStatus.DONE
@@ -195,6 +227,31 @@ class FightHandler(
         }
         reportFrameIndex++
         Log.d(TAG, "Saved report frame ${file.name}")
+    }
+
+    /**
+     * Diagnostic only (see class doc "Trigger-classification diagnostic").
+     * Classifies this capture as TITLE_ONLY, REWARDS_ONLY, or BOTH based on
+     * [titleSeenThisSession]/[rewardsSeenThisSession], and appends one line
+     * to a single running log file in [baseDir] — every session, not just
+     * the interesting ones, so frequency can be compared meaningfully.
+     */
+    private fun logTriggerClassification() {
+        val classification = when {
+            titleSeenThisSession && rewardsSeenThisSession -> "BOTH"
+            titleSeenThisSession                           -> "TITLE_ONLY"
+            rewardsSeenThisSession                         -> "REWARDS_ONLY"
+            // Reached when onTerminate() ends the session while still
+            // WATCHING (fight ended, or was pre-empted, before the hunt
+            // report screen ever appeared) — neither signal fired, so
+            // there's nothing meaningful to classify.
+            else -> return
+        }
+        baseDir.mkdirs()
+        val logFile   = File(baseDir, "hunt_report_trigger_log.log")
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.UK).format(Date())
+        logFile.appendText("$timestamp: $classification (session=${sessionDir?.name})\n")
+        Log.d(TAG, "Hunt report trigger classification: $classification")
     }
 
     /**
@@ -233,9 +290,11 @@ class FightHandler(
         val file = breakCropComposer.exportComposite(requireSessionDir())
         Log.d(TAG, "Saved break crops: ${file.name}")
 
-        subState         = SubState.WATCHING
-        sessionDir       = null
-        reportFrameIndex = 0
+        subState                = SubState.WATCHING
+        sessionDir              = null
+        reportFrameIndex        = 0
+        titleSeenThisSession    = false
+        rewardsSeenThisSession  = false
     }
 
 }

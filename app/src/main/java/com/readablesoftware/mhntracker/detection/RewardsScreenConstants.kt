@@ -28,6 +28,18 @@ object RewardsScreenConstants {
     const val HUNT_REPORT_X2  = 453
     const val HUNT_REPORT_Y2  = 286
 
+    // Screen classifier region — "Rewards" section-divider text crop.
+    // Alternative trigger for the Hunt Report screen: the "Hunt Report" title
+    // above can be obscured by stacked pop-ups (quest/event toasts) for long
+    // enough that it scrolls off before ever being seen unobscured. "Rewards"
+    // sits lower on the same static screen and is unaffected by that overlap.
+    // Coordinates confirmed pixel-identical across three independent hunt
+    // reports (different monsters/star ratings/completion times).
+    const val REWARDS_X1      = 436
+    const val REWARDS_Y1      = 787
+    const val REWARDS_X2      = 646
+    const val REWARDS_Y2      = 834
+
     // Confirm button region
     const val CONFIRM_X1      = 50
     const val CONFIRM_Y1      = 2090
