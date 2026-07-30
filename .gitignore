@@ -27,6 +27,7 @@ app/release/
 Thumbs.db
 /hunt-captures/
 /analysis_output/
+/image-backups/
 
 # Large test fixtures (kept locally, too large to commit)
 app/src/test/resources/*.mp4

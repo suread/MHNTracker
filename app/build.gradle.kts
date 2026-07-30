@@ -89,3 +89,22 @@ dependencies {
 
 }
 
+// Pulls image files off the device before instrumented tests wipe the app.
+tasks.register<Exec>("backupAppImages") {
+    val outputDir = file("$rootDir/image-backups").apply { mkdirs() }
+    val timestamp = System.currentTimeMillis().toString()
+    val destDir = file("$outputDir/run-$timestamp")
+
+    commandLine(
+        "adb", "pull",
+        "/sdcard/Android/data/com.readablesoftware.mhntracker/files/sessions",
+        destDir.absolutePath
+    )
+    isIgnoreExitValue = true // don't fail the build if the folder doesn't exist yet (first run)
+}
+
+afterEvaluate {
+    tasks.named("connectedDebugAndroidTest") {
+        dependsOn("backupAppImages")
+    }
+}
