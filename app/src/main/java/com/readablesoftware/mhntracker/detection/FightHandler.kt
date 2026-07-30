@@ -18,9 +18,10 @@ import java.util.Locale
  *
  * Internal sub-states:
  *
- *   WATCHING   — fight is in progress. Checks for breaks (saved immediately)
- *                and the hunt report screen. Transitions to CAPTURING when
- *                the hunt report appears.
+ *   WATCHING   — fight is in progress. Checks for breaks (crops buffered in
+ *                memory via BreakCropComposer - not written to disk until the
+ *                session ends) and the hunt report screen. Transitions to
+ *                CAPTURING when the hunt report appears.
  *
  *   CAPTURING  — hunt report screen is visible. Saves every frame until the
  *                confirm button is detected or the frame cap is reached.
@@ -30,7 +31,9 @@ import java.util.Locale
  *   report frame). All frames from both sub-states go into the same directory
  *   so break context is available alongside the hunt report frames.
  *   Directory name: sessions/<yyyyMMdd-HHmmss>/
- *   Break frames:   sessions/<timestamp>/break_<timestamp_ms>.png
+ *   Break crops:    sessions/<timestamp>/break_crops-<export_timestamp>.png
+ *                   — one composite image per session (all buffered break
+ *                   crops stitched together), written on reset.
  *   Report frames:  sessions/<timestamp>/frame_0001.png, frame_0002.png, …
  *
  * Trigger:
@@ -142,7 +145,6 @@ class FightHandler(
         if (breakVisible) {
             Log.d(TAG, "BREAK detected — storing break frame")
             breakCropComposer.addBreakFrame(frame)
-//            saveBreakFrame(frame)
         }
 
         return HandlerStatus.CONTINUE
@@ -193,23 +195,6 @@ class FightHandler(
         }
         reportFrameIndex++
         Log.d(TAG, "Saved report frame ${file.name}")
-    }
-
-    /**
-     * Saves a break frame to the session directory.
-     * Creates the session directory lazily on first call.
-     * Break frames use a timestamp filename to distinguish multiple breaks
-     * within the same fight.
-     */
-    private fun saveBreakFrame(bitmap: Bitmap) {
-        val dir = requireSessionDir()
-        dir.mkdirs()   // defensive: recreate if deleted mid-session
-        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date())
-        val file = File(dir, "break_$timestamp.png")
-        FileOutputStream(file).use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-        Log.d(TAG, "Saved break frame: ${file.name}")
     }
 
     /**
