@@ -24,7 +24,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Candidate regions under test - (label, x_left, x_right).
 # y_top/height are shared across regions for this round of comparison.
@@ -42,6 +41,9 @@ HEIGHT = 300
 # frames. Generous starting guess to allow for dropped frames - tune once
 # real results come back.
 MAX_SHIFT = 1200
+
+# gray band across top of every frame - occupies area of status bar on phone
+STATUS_AREA_HEIGHT = 140
 
 # ---------------------------------------------------------------------------
 # Manually-verified ground truth: fill in as frame sequences are checked by
@@ -71,10 +73,6 @@ def measure_shift(
     for it in frame_b within a taller region starting further up - content
     that has scrolled up appears higher (smaller y) in frame_b than it was
     in frame_a.
-
-    TODO(suread): implement using cv2.matchTemplate + cv2.minMaxLoc.
-    offset_px should be positive when content scrolled up between the two
-    frames (i.e. frame_b's matching content is higher up than y_top).
     """
     template_crop = frame_a[y_top:y_top+height, x_left:x_right]
     search_crop = frame_b[max(0, y_top - max_shift):y_top+height, x_left:x_right]
@@ -107,7 +105,7 @@ def load_frames(session_dir: Path) -> list[tuple[int, np.ndarray]]:
         frames.append((index, img))
     return frames
 
-def load_ground_truth(session_dir: Path) -> list[tuple[int, np.ndarray]]:
+def load_ground_truth(session_dir: Path) -> dict[tuple[int, int], int]:
     """Load measured scroll values from ground_truth.csv in session dir."""
     ground_truth: dict[tuple[int, int], int] = {
         # (0, 1): 0,
@@ -118,6 +116,9 @@ def load_ground_truth(session_dir: Path) -> list[tuple[int, np.ndarray]]:
             ground_truth[(int(row['frame_a']),int(row['frame_b']))] = int(row['y_a']) - int(row['y_b'])
     return ground_truth
 
+def join_images(composite: np.ndarray, new_img: np.ndarray, scroll_distance: int) -> np.ndarray:
+    composite = np.concatenate((composite[:len(composite) + scroll_distance - len(new_img)],new_img), axis=0)
+    return composite
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -134,12 +135,25 @@ def main() -> None:
     print(f"Loaded {len(frames)} frames from {session_dir}")
 
     rows = []
+    composites: dict[str, np.ndarray] = {}
+
     for label, x_left, x_right in REGIONS:
+        composite = frames[0][1][STATUS_AREA_HEIGHT:]
+        pending_image = frames[0][1][STATUS_AREA_HEIGHT:]
+        pending_scroll = 0
         for (idx_a, frame_a), (idx_b, frame_b) in zip(frames, frames[1:]):
             t0 = time.perf_counter()
             result = measure_shift(frame_a, frame_b, x_left, x_right, Y_TOP, HEIGHT, MAX_SHIFT)
             elapsed_ms = (time.perf_counter() - t0) * 1000
             result.elapsed_ms = elapsed_ms
+
+            if result.offset_px == 0:
+                # TODO look at timing of crop when coding in Kotlin - we only need to crop if this image is added to the composite
+                pending_image = frame_b[STATUS_AREA_HEIGHT:]
+            else:
+                composite = join_images(composite, pending_image, pending_scroll)
+                pending_image = frame_b[STATUS_AREA_HEIGHT:]
+                pending_scroll = result.offset_px
 
             truth = ground_truth.get((idx_a, idx_b))
             rows.append({
@@ -155,6 +169,8 @@ def main() -> None:
             print(f"[{label}] frame {idx_a:04d}->{idx_b:04d}: "
                   f"offset={result.offset_px}px conf={result.confidence:.4f} "
                   f"({result.elapsed_ms:.2f}ms){truth_note}")
+        composite = join_images(composite, pending_image, pending_scroll)
+        composites[label] = composite
 
     with open(args.out, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -162,6 +178,8 @@ def main() -> None:
         writer.writerows(rows)
     print(f"\nCSV -> {args.out}")
 
+    for label in composites:
+        cv2.imwrite(f"composite_{label}.png", composites[label])
 
 if __name__ == "__main__":
     main()

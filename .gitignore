@@ -41,6 +41,7 @@ app/src/test/resources/fast-tap/
 utilities/*.exe
 utilities/frame_*.png
 prototypes/*.csv
+prototypes/*.png
 
 # Pre-redaction originals of committed/fixture screenshots — kept locally
 # for reference in case a redaction needs redoing, never for the public repo.
