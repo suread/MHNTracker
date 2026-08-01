@@ -24,7 +24,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-Y_TOP = 600
+# Starting template position, moved as high as possible to favour the most-settled
+# content, while staying clear of in-game pop-ups. A captured pop-up measured at
+# y=185-423 plus a few px of drop shadow - 450 gives it a margin.
+Y_TOP = 450
 HEIGHT = 300
 
 TEMPLATE_LEFT = 150
@@ -39,17 +42,27 @@ BELOW_PREMIUM_ITEMS_PILL = 300
 # real results come back.
 MAX_SHIFT = 1200
 
-# Below this, a detected (non-zero) scroll is treated as a spurious match against
-# changing graphics in the template region rather than a genuine scroll, and is
-# rejected - the frame is carried forward instead of joined. Picked from observed
-# scores: ~0.45 for a missed genuine scroll, ~0.6 for a false-positive detection,
-# ~0.8 for a correct detection - 0.7 sits between the false positive and the
-# correct match. Does not affect a *no-scroll* (offset_px == 0) reading, even at
-# low confidence - see TODO at the call site.
-CONFIDENCE_THRESHOLD = 0.7
+# Below this, a match (whether or not a scroll was detected) is not trusted, and
+# find_shift() retries with the template moved further down the frame instead.
+# Raised from an initial 0.7 to 0.9 as a test: 0.7 let through a false-positive
+# match against a coincidental smooth-gradient similarity (icon vs. background blur)
+# at 0.7255. The hypothesis is that pushing the bar higher costs little - frame
+# pairs that would have passed at a lower bar are expected to still find a confident
+# match further down the frame instead, since find_shift() keeps retrying.
+CONFIDENCE_THRESHOLD = 0.9
+
+# How far to move the template down the frame between retries in find_shift().
+TEMPLATE_STEP = 100
 
 # gray band across top of every frame - occupies area of status bar on phone
 STATUS_AREA_HEIGHT = 140
+
+# Exclusion zone at the bottom of the frame the template must stay clear of - on the
+# capture device used for these runs (gesture nav) this is the grayed control strip.
+# This is specific to that one device/settings combination - on-screen nav buttons
+# (rather than gesture nav) would need a wider margin, and this will need to become
+# configurable rather than a fixed pixel count once more devices are involved.
+BOTTOM_MARGIN = 63
 
 # Contact sheet layout - composites are scaled down for viewing/processing/file-size
 # reasons only (zoom handles readability); rows are capped at 10 so a full run fits in
@@ -62,6 +75,9 @@ CONTACT_SHEET_MAX_COLS = 10
 # a row's tallest composite and the label of the row below it.
 CONTACT_SHEET_LABEL_HEIGHT = 60
 CONTACT_SHEET_BG_COLOR = (255, 255, 255)
+# BGR (cv2 convention) - flags a session where find_shift() ran out of frame before
+# reaching CONFIDENCE_THRESHOLD on any attempt.
+CONTACT_SHEET_FAIL_BG_COLOR = (0, 0, 255)
 
 
 @dataclass
@@ -100,6 +116,56 @@ def measure_shift(
 
     search_start = max(0, y_top - max_shift)
     return ShiftResult((y_top - search_start) - max_loc[1], max_val)
+
+
+@dataclass
+class ShiftSearchResult:
+    result: ShiftResult   # the accepted match, or the highest-confidence attempt if none were accepted
+    top_y: int            # y_top the reported result came from
+    accepted: bool        # True if result.confidence reached CONFIDENCE_THRESHOLD
+    elapsed_ms: float     # total time across every attempt, not just the reported one
+
+
+def find_shift(
+    frame_a: np.ndarray,
+    frame_b: np.ndarray,
+    x_left: int, x_right: int,
+    y_top_start: int, height: int,
+    max_shift: int,
+    step: int,
+    bottom_margin: int,
+    confidence_threshold: float,
+) -> ShiftSearchResult:
+    """
+    Call measure_shift with the template at y_top_start, moving it down by `step` px
+    and retrying whenever the match scores below confidence_threshold - low confidence
+    means the template likely landed on unrendered/changing content rather than that
+    the shift itself was wrong. Stops and accepts the first confident match.
+
+    If the template runs out of frame (would cross bottom_margin from the bottom of
+    frame_a) without a confident match, returns the highest-confidence attempt seen,
+    with accepted=False - the caller treats this as a 0px scroll, but the returned
+    result/top_y record what was actually measured for diagnostic purposes.
+    """
+    y_top = y_top_start
+    best: ShiftResult | None = None
+    best_top_y = y_top_start
+    total_elapsed_ms = 0.0
+
+    while True:
+        t0 = time.perf_counter()
+        result = measure_shift(frame_a, frame_b, x_left, x_right, y_top, height, max_shift)
+        total_elapsed_ms += (time.perf_counter() - t0) * 1000
+
+        if best is None or result.confidence > best.confidence:
+            best, best_top_y = result, y_top
+
+        if result.confidence >= confidence_threshold:
+            return ShiftSearchResult(result, y_top, True, total_elapsed_ms)
+
+        y_top += step
+        if y_top + height > frame_a.shape[0] - bottom_margin:
+            return ShiftSearchResult(best, best_top_y, False, total_elapsed_ms)
 
 
 def load_frames(session_dir: Path) -> list[tuple[int, np.ndarray]]:
@@ -148,10 +214,12 @@ def find_frame_sets(root_dir: Path) -> list[Path]:
     return sorted(session_dirs)
 
 
-def build_contact_sheet(composites: dict[Path, np.ndarray]) -> np.ndarray:
+def build_contact_sheet(composites: dict[Path, np.ndarray], failed_sessions: set[Path]) -> np.ndarray:
     """
     Arrange scaled-down composite thumbnails into a single grid image, each labelled
     with its source session directory, for quick visual comparison across a run.
+    A session in failed_sessions gets a red label background, flagging it for a
+    closer look at its --detail CSV rows.
 
     Assumes every composite shares the same width (true as long as all source frames
     come from the same device/resolution) - only height varies row to row.
@@ -165,19 +233,20 @@ def build_contact_sheet(composites: dict[Path, np.ndarray]) -> np.ndarray:
             (int(width * CONTACT_SHEET_SCALE), int(height * CONTACT_SHEET_SCALE)),
             interpolation=cv2.INTER_AREA,
         )
-        thumbnails.append((session_dir.name, thumb))
+        thumbnails.append((session_dir.name, thumb, session_dir in failed_sessions))
 
     thumb_width = thumbnails[0][1].shape[1]
 
     rows = []
     for row_start in range(0, len(thumbnails), CONTACT_SHEET_MAX_COLS):
         row = thumbnails[row_start:row_start + CONTACT_SHEET_MAX_COLS]
-        row_thumb_height = max(thumb.shape[0] for _, thumb in row)
+        row_thumb_height = max(thumb.shape[0] for _, thumb, _ in row)
         cell_height = row_thumb_height + CONTACT_SHEET_LABEL_HEIGHT
 
         cells = []
-        for label, thumb in row:
-            cell = np.full((cell_height, thumb_width, 3), CONTACT_SHEET_BG_COLOR, dtype=np.uint8)
+        for label, thumb, failed in row:
+            bg_color = CONTACT_SHEET_FAIL_BG_COLOR if failed else CONTACT_SHEET_BG_COLOR
+            cell = np.full((cell_height, thumb_width, 3), bg_color, dtype=np.uint8)
             cv2.putText(cell, label, (4, CONTACT_SHEET_LABEL_HEIGHT - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1, cv2.LINE_AA)
             cell[CONTACT_SHEET_LABEL_HEIGHT:CONTACT_SHEET_LABEL_HEIGHT + thumb.shape[0]] = thumb
@@ -209,6 +278,7 @@ def main() -> None:
 
     rows = []
     composites: dict[Path, np.ndarray] = {}
+    failed_sessions: set[Path] = set()
 
     for session_dir in session_dirs:
         frames = load_frames(session_dir)
@@ -223,20 +293,18 @@ def main() -> None:
         pending_scroll = 0
 
         for (idx_a, frame_a), (idx_b, frame_b) in zip(frames, frames[1:]):
-            t0 = time.perf_counter()
-            result = measure_shift(frame_a, frame_b, TEMPLATE_LEFT, TEMPLATE_RIGHT, Y_TOP, HEIGHT, MAX_SHIFT)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            result.elapsed_ms = elapsed_ms
+            search = find_shift(frame_a, frame_b, TEMPLATE_LEFT, TEMPLATE_RIGHT, Y_TOP, HEIGHT,
+                                 MAX_SHIFT, TEMPLATE_STEP, BOTTOM_MARGIN, CONFIDENCE_THRESHOLD)
+            result = search.result
+            result.elapsed_ms = search.elapsed_ms
 
-            accepted_offset = result.offset_px
-            if accepted_offset != 0 and result.confidence < CONFIDENCE_THRESHOLD:
-                accepted_offset = 0
+            if not search.accepted:
+                failed_sessions.add(session_dir)
+
+            accepted_offset = result.offset_px if search.accepted else 0
 
             if accepted_offset == 0:
                 # TODO look at timing of crop when coding in Kotlin - we only need to crop if this image is added to the composite
-                # TODO a low-confidence *no-scroll* reading (e.g. a genuine scroll missed
-                # because the true shift exceeds MAX_SHIFT) isn't handled yet - there's
-                # nothing to substitute in its place until a secondary region search exists.
                 pending_image = frame_b[STATUS_AREA_HEIGHT:]
             else:
                 composite = join_images(composite, pending_image, pending_scroll)
@@ -245,18 +313,22 @@ def main() -> None:
 
             if args.detail:
                 truth = ground_truth.get((idx_a, idx_b))
+                confidence_str = f"{result.confidence:.4f}"
+                if not search.accepted:
+                    confidence_str += "***"
                 rows.append({
                     "session_dir": session_dir.name,
                     "frame_a": idx_a,
                     "frame_b": idx_b,
-                    "confidence": f"{result.confidence:.4f}",
+                    "confidence": confidence_str,
+                    "template_top_y": search.top_y,
                     "offset_px": result.offset_px,
                     "ground_truth_px": truth if truth is not None else "",
                     "elapsed_ms": f"{result.elapsed_ms:.2f}",
                 })
                 truth_note = f"  [truth={truth}]" if truth is not None else ""
                 print(f"[{session_dir.name}] frame {idx_a:04d}->{idx_b:04d}: "
-                      f"offset={result.offset_px}px conf={result.confidence:.4f} "
+                      f"offset={result.offset_px}px conf={confidence_str} top_y={search.top_y} "
                       f"({result.elapsed_ms:.2f}ms){truth_note}")
 
         composite = join_images(composite, pending_image, pending_scroll)
@@ -273,7 +345,7 @@ def main() -> None:
         print(f"\nCSV -> {args.out}")
 
     if composites:
-        cv2.imwrite("contact_sheet.png", build_contact_sheet(composites))
+        cv2.imwrite("contact_sheet.png", build_contact_sheet(composites, failed_sessions))
         print("Contact sheet -> contact_sheet.png")
 
 
