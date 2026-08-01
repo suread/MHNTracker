@@ -39,6 +39,15 @@ BELOW_PREMIUM_ITEMS_PILL = 300
 # real results come back.
 MAX_SHIFT = 1200
 
+# Below this, a detected (non-zero) scroll is treated as a spurious match against
+# changing graphics in the template region rather than a genuine scroll, and is
+# rejected - the frame is carried forward instead of joined. Picked from observed
+# scores: ~0.45 for a missed genuine scroll, ~0.6 for a false-positive detection,
+# ~0.8 for a correct detection - 0.7 sits between the false positive and the
+# correct match. Does not affect a *no-scroll* (offset_px == 0) reading, even at
+# low confidence - see TODO at the call site.
+CONFIDENCE_THRESHOLD = 0.7
+
 # gray band across top of every frame - occupies area of status bar on phone
 STATUS_AREA_HEIGHT = 140
 
@@ -219,13 +228,20 @@ def main() -> None:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             result.elapsed_ms = elapsed_ms
 
-            if result.offset_px == 0:
+            accepted_offset = result.offset_px
+            if accepted_offset != 0 and result.confidence < CONFIDENCE_THRESHOLD:
+                accepted_offset = 0
+
+            if accepted_offset == 0:
                 # TODO look at timing of crop when coding in Kotlin - we only need to crop if this image is added to the composite
+                # TODO a low-confidence *no-scroll* reading (e.g. a genuine scroll missed
+                # because the true shift exceeds MAX_SHIFT) isn't handled yet - there's
+                # nothing to substitute in its place until a secondary region search exists.
                 pending_image = frame_b[STATUS_AREA_HEIGHT:]
             else:
                 composite = join_images(composite, pending_image, pending_scroll)
                 pending_image = frame_b[STATUS_AREA_HEIGHT:]
-                pending_scroll = result.offset_px
+                pending_scroll = accepted_offset
 
             if args.detail:
                 truth = ground_truth.get((idx_a, idx_b))
@@ -233,10 +249,10 @@ def main() -> None:
                     "session_dir": session_dir.name,
                     "frame_a": idx_a,
                     "frame_b": idx_b,
-                    "offset_px": result.offset_px,
                     "confidence": f"{result.confidence:.4f}",
-                    "elapsed_ms": f"{result.elapsed_ms:.2f}",
+                    "offset_px": result.offset_px,
                     "ground_truth_px": truth if truth is not None else "",
+                    "elapsed_ms": f"{result.elapsed_ms:.2f}",
                 })
                 truth_note = f"  [truth={truth}]" if truth is not None else ""
                 print(f"[{session_dir.name}] frame {idx_a:04d}->{idx_b:04d}: "
