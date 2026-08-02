@@ -2,6 +2,9 @@ package com.readablesoftware.mhntracker.detection
 
 object RewardsScreenConstants {
 
+    // Hunt report scroll stitching (screen position/size measurements all based on Pixel 7)
+    const val STATUS_AREA_HEIGHT = 140  // status bar band cropped off the top of every frame
+
     // Grid layout
     const val COLUMN_X_FIRST  = 30
     const val FRAME_WIDTH     = 240

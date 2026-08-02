@@ -5,21 +5,16 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.util.Log
 import androidx.core.graphics.createBitmap
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.readablesoftware.mhntracker.detection.FightScreenConstants
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_X1
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_X2
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_Y1
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_TEXT_Y2
-import com.readablesoftware.mhntracker.export.BreakCropComposer
 import com.readablesoftware.mhntracker.util.ExportTimestamps
 import org.junit.After
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
@@ -189,6 +184,13 @@ class BreakCropComposerTest {
         val storeMillis = ExportTimestamps.parse(outputFileName.substring(12, outputFileName.length - 4))
 
         assertTrue(storeMillis in beforeMillis..afterMillis)
+    }
+
+    @Test
+    fun `export produces a filename matching the intended content`() {
+        val outputFile = composer.exportComposite(tempSessionDir)
+
+        assertEquals("break_crops-", outputFile.name.substring(0, 12))
     }
 
     @Test
