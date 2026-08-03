@@ -43,4 +43,43 @@ class MeasureShiftInstrumentedTest {
 
     }
 
+    @Test
+    fun measureShift_gives_low_confidence_result_when_shift_not_detectable_at_passed_parameters() {
+
+        val frameA = TestFrameLoader.loadTestFrame("measureShift-frames/20260730-122843", 23)
+        val frameB = TestFrameLoader.loadTestFrame("measureShift-frames/20260730-122843", 24)
+        val frameC = TestFrameLoader.loadTestFrame("measureShift-frames/20260730-122843", 25)
+        val frameD = TestFrameLoader.loadTestFrame("measureShift-frames/20260730-122843", 26)
+
+        val composer = HuntReportComposer()
+
+        val result1 = composer.measureShift(frameA, frameB, x1 = 150, x2 = 200, yTop = 600, height = 300, maxShift = 1200)
+        val result2 = composer.measureShift(frameC, frameD, x1 = 150, x2 = 200, yTop = 600, height = 300, maxShift = 1200)
+
+        println("offset=${result1.offset} confidence=${result1.confidence}")
+        println("offset=${result2.offset} confidence=${result2.confidence}")
+
+        assertEquals(0, result1.offset)
+        assertEquals(0.4743, result1.confidence, 1e-4)
+
+        assertEquals(581, result2.offset)
+        assertEquals(0.6093, result2.confidence, 1e-4)
+
+    }
+
+    @Test
+    fun measureShift_gives_0_offset_at_high_confidence_for_2_identical_frames() {
+
+        val frame = TestFrameLoader.loadTestFrame("measureShift-frames/20260730-122843", 23)
+
+        val composer = HuntReportComposer()
+
+        val result = composer.measureShift(frame, frame, x1 = 150, x2 = 200, yTop = 450, height = 300, maxShift = 1200)
+
+        println("offset=${result.offset} confidence=${result.confidence}")
+        assertEquals(0, result.offset)
+        assertEquals(1.0, result.confidence, 1e-4)
+
+    }
+
 }
