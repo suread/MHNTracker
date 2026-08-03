@@ -7,6 +7,10 @@ import android.graphics.Rect
 import androidx.core.graphics.createBitmap
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.STATUS_AREA_HEIGHT
 import com.readablesoftware.mhntracker.util.ExportTimestamps
+import org.opencv.android.Utils
+import org.opencv.core.Core
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
 
@@ -129,8 +133,36 @@ class HuntReportComposer {
         }
     }
 
-    fun measureShift(frameA: Bitmap, frameB: Bitmap, xLeft: Int, xRight: Int, yTop: Int, height: Int, maxShift: Int): MeasuredShift {
-        return MeasuredShift(0, 0.0)
+    /**
+     *
+     *     """
+     *     Estimate the vertical scroll shift between frame_a (older) and frame_b
+     *     (newer), using the column [x_left:x_right] as the comparison region.
+     *
+     *     Crop a template of the given height from frame_a at y_top, then search
+     *     for it in frame_b within a taller region starting further up - content
+     *     that has scrolled up appears higher (smaller y) in frame_b than it was
+     *     in frame_a.
+     *     """
+     *
+     */
+    fun measureShift(frameA: Bitmap, frameB: Bitmap, x1: Int, x2: Int, yTop: Int, height: Int, maxShift: Int): MeasuredShift {
+        val matA = Mat()
+        Utils.bitmapToMat(frameA, matA)
+        val matB = Mat()
+        Utils.bitmapToMat(frameB, matB)
+
+        val template = matA.submat(yTop, yTop+height, x1, x2)
+        val searchTop = maxOf(0, yTop - maxShift)
+        val search = matB.submat(searchTop, yTop+height, x1, x2)
+
+        val result = Mat()
+        Imgproc.matchTemplate(search, template, result, Imgproc.TM_CCOEFF_NORMED)
+        val mmr = Core.minMaxLoc(result)
+
+        check(mmr.maxLoc.x == 0.0) { "template not found at left side of search crop" }
+
+        return MeasuredShift((yTop - searchTop) - mmr.maxLoc.y.toInt(), mmr.maxVal)
     }
 
 }
