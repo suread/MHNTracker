@@ -15,6 +15,16 @@ data class BitmapWithVerticalOffset(
     val scroll: Int
 )
 
+data class ShiftResult(
+    val offset: Int,
+    val accepted: Boolean
+)
+
+data class MeasuredShift(val offset: Int, val confidence: Double)
+
+typealias ShiftMeasurer =
+            (frameA: Bitmap, frameB: Bitmap, xLeft: Int, xRight: Int, yTop: Int, height: Int, maxShift: Int) -> MeasuredShift
+
 class HuntReportComposer {
 
     private var huntReportScrolls = mutableListOf<BitmapWithVerticalOffset>()
@@ -81,4 +91,46 @@ class HuntReportComposer {
 
         return file
     }
+
+    /**
+     * Finds the vertical scroll offset between [frameA] and [frameB] by locating a template
+     * region cropped from frameA within frameB, retrying at successively lower template
+     * positions until a confident match is found.
+     *
+     * The template starts at ([x1], [yTopStart]) to ([x2], [yTopStart] + [height]) in frameA.
+     * [measure] searches for it within frameB. If the match confidence falls below
+     * [confidenceThreshold], the template position moves down by [step] and the search retries -
+     * low confidence usually means the template landed on unrendered or animating content, not
+     * that the true shift was measured wrong. The first attempt reaching [confidenceThreshold] is
+     * accepted and returned immediately.
+     *
+     * If no attempt reaches [confidenceThreshold] before the template would cross [bottomMargin]
+     * from the bottom of frameA, returns accepted = false and offset = 0 - the caller should
+     * discard frameB rather than trust an unreliable offset.
+     *
+     * [measure] defaults to the real [measureShift] implementation; tests can substitute a fake
+     * to exercise the retry/threshold logic without real template matching.
+     */
+
+    fun findShift(frameA: Bitmap, frameB: Bitmap, x1: Int, x2: Int, yTopStart: Int, height: Int, maxShift: Int, step: Int, bottomMargin: Int, confidenceThreshold: Double, measure: ShiftMeasurer = ::measureShift): ShiftResult {
+        var yTop = yTopStart
+
+        while (true) {
+            val result = measure(frameA, frameB, x1, x2, yTop, height, maxShift)
+
+            if (result.confidence > confidenceThreshold) {
+                return ShiftResult(result.offset, true)
+            }
+
+            yTop += step
+            if (yTop + height > frameA.height - bottomMargin) {
+                return ShiftResult(0, false)
+            }
+        }
+    }
+
+    fun measureShift(frameA: Bitmap, frameB: Bitmap, xLeft: Int, xRight: Int, yTop: Int, height: Int, maxShift: Int): MeasuredShift {
+        return MeasuredShift(0, 0.0)
+    }
+
 }

@@ -10,6 +10,7 @@ import com.readablesoftware.mhntracker.util.ExportTimestamps
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
@@ -150,6 +151,108 @@ class HuntReportComposerTest {
         val frame = makeFrame(100, STATUS_AREA_HEIGHT)
 
         composer.addFrame(frame)
+    }
+
+    @Test
+    fun `findShift returns immediately if first shift check is a confident match`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 40, confidence = 0.95),
+            MeasuredShift(offset = 42, confidence = 0.95),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = makeFrame(10,200, listOf<FrameMarker>())
+
+        val search = composer.findShift(frame, frame, x1 = 2, x2 = 4, yTopStart = 180, height = 5, maxShift = 500, step = 5, bottomMargin = 5, confidenceThreshold = 0.9, measure = fakeMeasure)
+
+        assertEquals(40, search.offset)
+        assertTrue(search.accepted)
+        assertEquals(1, callIndex)
+
+    }
+
+    @Test
+    fun `findShift retries exactly once when first match is low confidence and 2nd is above threshold`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.95),
+            MeasuredShift(offset = 43, confidence = 0.95),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = makeFrame(10,200, listOf<FrameMarker>())
+
+        val search = composer.findShift(frame, frame, x1 = 2, x2 = 4, yTopStart = 180, height = 5, maxShift = 500, step = 5, bottomMargin = 5, confidenceThreshold = 0.9, measure = fakeMeasure)
+
+        assertEquals(42, search.offset)
+        assertTrue(search.accepted)
+        assertEquals(2, callIndex)
+
+    }
+
+    @Test
+    fun `findShift returns shift = 0 and accepted = false if no matches are above the confidence threshold`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = makeFrame(10,200, listOf<FrameMarker>())
+
+        val search = composer.findShift(frame, frame, x1 = 2, x2 = 4, yTopStart = 180, height = 5, maxShift = 500, step = 5, bottomMargin = 5, confidenceThreshold = 0.9, measure = fakeMeasure)
+
+        assertEquals(0, search.offset)
+        assertFalse(search.accepted)
+    }
+
+    @Test
+    fun `findShift uses all the expected template area when matches continue to that point`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = makeFrame(10,200, listOf<FrameMarker>())
+
+        val search = composer.findShift(frame, frame, x1 = 2, x2 = 4, yTopStart = 180, height = 5, maxShift = 500, step = 5, bottomMargin = 5, confidenceThreshold = 0.9, measure = fakeMeasure)
+
+        // for frame made and values given, expecting findShift to look for values of yTop = 180, 185,190. At 190, the template area will run from y=190 to y=195 - callIndex should be 3
+        assertEquals(0, search.offset)
+        assertFalse(search.accepted)
+        assertEquals(3, callIndex)
+    }
+
+    @Test
+    fun `findShift does not go beyond the expected template range when no match is found`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+            MeasuredShift(offset = 40, confidence = 0.5),
+            MeasuredShift(offset = 42, confidence = 0.5),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = makeFrame(10,200, listOf<FrameMarker>())
+
+        val search = composer.findShift(frame, frame, x1 = 2, x2 = 4, yTopStart = 180, height = 5, maxShift = 500, step = 5, bottomMargin = 6, confidenceThreshold = 0.9, measure = fakeMeasure)
+
+        // for frame made and values given, expecting findShift to look for values of yTop = 180, 185.
+        // At 190, the template area will run from y=190 to y=195, but with bottomMargin = 6 this should now cross over into the margin area - callIndex should be 2
+        assertEquals(0, search.offset)
+        assertFalse(search.accepted)
+        assertEquals(2, callIndex)
+
     }
 
 }
