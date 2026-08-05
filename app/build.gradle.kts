@@ -33,6 +33,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -46,10 +47,6 @@ android {
             test.maxHeapSize = "4g" // OOM loading frame images
         }
     }
-    buildFeatures {
-        viewBinding = true
-    }
-
 }
 
 dependencies {

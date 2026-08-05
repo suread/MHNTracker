@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.readablesoftware.mhntracker.capture.AppState
 import com.readablesoftware.mhntracker.capture.CaptureStatus
+import com.readablesoftware.mhntracker.debug.DebugFrameSave
+import com.readablesoftware.mhntracker.debug.FrameSaveFlow
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -148,7 +150,7 @@ class FightHandler(
         val t1 = System.currentTimeMillis()
         val titleVisible = huntReportDetector.isTitleVisible(frame)
         val rewardsVisible = huntReportDetector.isRewardsHeaderVisible(frame)
-        val huntVisible = titleVisible || rewardsVisible
+        val huntVisible = titleVisible || rewardsVisible // TODO determine if rewards header is reliable signal alone.
         Log.d("MHNTiming", "isHuntReportScreen: ${System.currentTimeMillis() - t1}ms  result=$huntVisible")
 
         if (huntVisible) {
@@ -157,7 +159,11 @@ class FightHandler(
             reportFrameIndex = 0
             titleSeenThisSession = titleVisible
             rewardsSeenThisSession = rewardsVisible
+            // TODO HuntReportComposer.addFrame to replace unconditional saveReportFrame once HRC testing completed, and debug gate will then be added
             saveReportFrame(frame)
+//            if (DebugFrameSave.shouldSave(FrameSaveFlow.REPORT)) {
+//                saveReportFrame(frame)
+//            }
             return HandlerStatus.CONTINUE
         }
 
@@ -168,6 +174,10 @@ class FightHandler(
         if (breakVisible) {
             Log.d(TAG, "BREAK detected — storing break frame")
             breakCropComposer.addBreakFrame(frame)
+            if (DebugFrameSave.shouldSave(FrameSaveFlow.BREAK)) {
+                saveBreakFrame(frame)
+            }
+
         }
 
         return HandlerStatus.CONTINUE
@@ -219,16 +229,34 @@ class FightHandler(
      * Creates the session directory lazily on first call.
      */
     private fun saveReportFrame(bitmap: Bitmap) {
+        val fileName = "frame_${reportFrameIndex.toString().padStart(4, '0')}.png"
+        saveFrame(bitmap, fileName)
+        reportFrameIndex++
+        Log.d(TAG, "Saved report frame ${fileName}")
+    }
+
+    /**
+     * Saves a break frame to the session directory.
+     * Creates the session directory lazily on first call.
+     * Break frames use a timestamp filename to distinguish multiple breaks
+     * within the same fight.
+     */
+    private fun saveBreakFrame(bitmap: Bitmap) {
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.UK).format(Date())
+        val fileName = "break_$timestamp.png"
+        saveFrame(bitmap, fileName)
+        Log.d(TAG, "Saved break frame: ${fileName}")
+    }
+
+    private fun saveFrame(bitmap: Bitmap, fileName: String) {
         val dir = requireSessionDir()
-        val file = File(dir, "frame_${reportFrameIndex.toString().padStart(4, '0')}.png")
         dir.mkdirs()   // defensive: recreate if deleted mid-session
+        val file = File(dir, fileName)
         FileOutputStream(file).use { stream ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
-        reportFrameIndex++
-        Log.d(TAG, "Saved report frame ${file.name}")
-    }
 
+    }
     /**
      * Diagnostic only (see class doc "Trigger-classification diagnostic").
      * Classifies this capture as TITLE_ONLY, REWARDS_ONLY, or BOTH based on

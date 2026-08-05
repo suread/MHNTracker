@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import androidx.core.graphics.createBitmap
+import com.readablesoftware.mhntracker.debug.DebugFrameSave
+import com.readablesoftware.mhntracker.debug.FrameSaveFlow
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X1
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_X2
 import com.readablesoftware.mhntracker.detection.FightScreenConstants.BREAK_GRAPHIC_Y1
@@ -14,10 +16,7 @@ import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.CONFIRM_
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.CONFIRM_SAMPLE_X2
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.CONFIRM_SAMPLE_Y1
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.CONFIRM_SAMPLE_Y2
-import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.HUNT_REPORT_X1
-import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.HUNT_REPORT_X2
-import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.HUNT_REPORT_Y1
-import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.HUNT_REPORT_Y2
+import com.readablesoftware.mhntracker.testutil.FrameMarker
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -32,6 +31,7 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.io.path.createTempDirectory
 import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
+import com.readablesoftware.mhntracker.testutil.TestFrameMaker
 
 
 @RunWith(RobolectricTestRunner::class)
@@ -258,6 +258,58 @@ class FightHandlerTest {
         // job. This only checks FightHandler correctly routes a break into it.
     }
 
+    @Test
+    fun `detected break is saved as file when DebugFrameSave enabled contains BREAK flow`() {
+        withDebugFrameSaveEnabled(FrameSaveFlow.BREAK) {
+            val breakFrame = TestFrameMaker.makeFrame(1080, 2400,
+                listOf<FrameMarker>(FrameMarker(BREAK_GRAPHIC_X1, BREAK_GRAPHIC_Y1, BREAK_GRAPHIC_X2, BREAK_GRAPHIC_Y2, Color.rgb(220, 150, 60))),
+                Color.WHITE
+            )
+
+            handler.onFrame(breakFrame)
+
+            // Trigger change to CAPTURING
+            handler.onFrame(loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15))
+
+            // Trigger session ends (confirm button)
+            handler.onFrame(loadTestFrame(huntSoloR6NoBreaks, frameIndex = 31))
+
+
+
+            val sessionsDir = File(tempDirectory, "sessions")
+            val sessionDir  = sessionsDir.listFiles { f -> f.isDirectory }!![0]
+            val breakFrameFiles = sessionDir.listFiles { f -> f.name.startsWith("break_") && !f.name.startsWith("break_crops") }
+            val breakCropsFiles = sessionDir.listFiles { f -> f.name.startsWith("break_crops") }
+
+            assertEquals(1, breakFrameFiles?.size)
+            assertEquals(1, breakCropsFiles?.size)
+
+        }
+    }
+
+    @Test
+    fun `detected break is not saved as file when DebugFrameSave enabled does not contain BREAK flow`() {
+        withDebugFrameSaveEnabled(FrameSaveFlow.REPORT) {
+            val breakFrame = TestFrameMaker.makeFrame(1080, 2400,
+                listOf<FrameMarker>(FrameMarker(BREAK_GRAPHIC_X1, BREAK_GRAPHIC_Y1, BREAK_GRAPHIC_X2, BREAK_GRAPHIC_Y2, Color.rgb(220, 150, 60))),
+                Color.WHITE
+            )
+
+            handler.onFrame(breakFrame)
+            // add hunt report trigger to ensure sessions directory and output directory is created
+            handler.onFrame(loadTestFrame(huntSoloR6NoBreaks, frameIndex = 15))
+
+            // sessions directory is only created if a file is saved - so if it does not exsit, frmae has not been saved
+            val sessionsDir = File(tempDirectory, "sessions")
+            val sessionDir  = sessionsDir.listFiles { f -> f.isDirectory }!![0]
+            val files = sessionDir.listFiles { f -> f.name.startsWith("break_") && !f.name.startsWith("break_crops") }
+
+            assertEquals(0, files?.size)
+
+        }
+    }
+
+
     // ------------------------------------------------------------------
     // Trigger-classification diagnostic — see FightHandler class doc.
     // Every capture is logged as TITLE_ONLY, REWARDS_ONLY, or BOTH, so
@@ -324,5 +376,15 @@ class FightHandlerTest {
 
         val logFile = File(tempDirectory, "hunt_report_trigger_log.log")
         assertEquals(2, logFile.readLines().size)
+    }
+
+    private fun withDebugFrameSaveEnabled(flow: FrameSaveFlow, block: () -> Unit) {
+        val original = DebugFrameSave.enabled
+        DebugFrameSave.enabled = setOf(flow)
+        try {
+            block()
+        } finally {
+            DebugFrameSave.enabled = original
+        }
     }
 }
