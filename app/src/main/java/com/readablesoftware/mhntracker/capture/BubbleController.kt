@@ -11,14 +11,13 @@ class BubbleController(
     private val mediaProjectionActive: StateFlow<CaptureStatus>,
 ) {
     companion object {
-        // Visual constants
         private const val SIZE_INACTIVE_DP = 56f
         private const val SIZE_ACTIVE_DP   = 36f
         private const val ALPHA_INACTIVE   = 1.0f
         private const val ALPHA_ACTIVE     = 0.45f
 
-        // Orange when inactive (prominent), grey-green when active (unobtrusive)
         private val COLOUR_INACTIVE = "#FF8C00".toColorInt()
+        private val COLOUR_IN_FIGHT = "#FF8C00".toColorInt()
         private val COLOUR_ACTIVE   = "#4CAF50".toColorInt()
         private val COLOUR_TERMINATED = "red".toColorInt()
 
@@ -40,7 +39,7 @@ class BubbleController(
         return when (status) {
             CaptureStatus.INACTIVE -> BubbleAppearance(SIZE_INACTIVE_DP, COLOUR_INACTIVE, ALPHA_INACTIVE)
             CaptureStatus.ACTIVE -> BubbleAppearance(SIZE_ACTIVE_DP, COLOUR_ACTIVE, ALPHA_ACTIVE)
-            CaptureStatus.IN_FIGHT -> BubbleAppearance(SIZE_ACTIVE_DP, COLOUR_INACTIVE, ALPHA_ACTIVE)
+            CaptureStatus.IN_FIGHT -> BubbleAppearance(SIZE_ACTIVE_DP, COLOUR_IN_FIGHT, ALPHA_ACTIVE)
             CaptureStatus.FIGHT_TERMINATED -> BubbleAppearance(SIZE_ACTIVE_DP, COLOUR_TERMINATED, ALPHA_ACTIVE)
         }
     }
