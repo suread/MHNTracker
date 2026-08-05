@@ -15,7 +15,10 @@ import android.media.projection.MediaProjectionManager
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
+import com.readablesoftware.mhntracker.debug.DebugFrameSave
+import com.readablesoftware.mhntracker.debug.FrameSaveFlow
 import com.readablesoftware.mhntracker.detection.AppStateDetector
 import com.readablesoftware.mhntracker.detection.FightEventDetector
 import com.readablesoftware.mhntracker.detection.FightHandler
@@ -31,6 +34,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.util.Log
 import androidx.core.graphics.createBitmap
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Central router for MHN screen capture.
@@ -74,6 +82,11 @@ class ScreenCaptureService : Service() {
         // consumed by the consumer. 3 × 200ms = 600ms between slow checks.
         private const val SLOW_CHECK_EVERY_N_FRAMES = 3
 
+        // Safety cap for FrameSaveFlow.RAW: 300 × 200ms = 60 seconds — enough
+        // to switch apps and back without filling storage if left running.
+        @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+        internal const val MAX_RAW_FRAMES = 300
+
         private const val TAG = "MHNRouter"
     }
 
@@ -90,6 +103,14 @@ class ScreenCaptureService : Service() {
     // Handlers checked in priority order. Built once in onCreate.
     private lateinit var handlers: List<SessionHandler>
 
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal lateinit var baseDir: File
+
+    // FrameSaveFlow.RAW state — one directory per service instance, created
+    // lazily on the first save. See saveRawFrameIfEnabled.
+    private var rawFrameDir: File? = null
+    private var rawFrameIndex = 0
+
     private val appStateDetector = AppStateDetector()
     private val serviceScope = CoroutineScope(Dispatchers.IO)
     private val frameChannel = Channel<Bitmap>(capacity = FRAME_CHANNEL_CAPACITY)
@@ -98,6 +119,7 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        baseDir = getExternalFilesDir(null) ?: filesDir
         handlers = buildHandlers()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Idle"))
@@ -129,8 +151,6 @@ class ScreenCaptureService : Service() {
      * before recoverable ones (inventory).
      */
     private fun buildHandlers(): List<SessionHandler> {
-        val baseDir = getExternalFilesDir(null) ?: filesDir
-
         val fightHandler = FightHandler(
             fightStartDetector = FightStartDetector.create(this),
             huntReportDetector = HuntReportDetector.create(this),
@@ -221,6 +241,10 @@ class ScreenCaptureService : Service() {
      * Main per-frame dispatch. Called by the consumer for every received frame.
      *
      * Order:
+     *   0. FrameSaveFlow.RAW (if enabled) — saves every frame verbatim,
+     *      before any classification, for diagnosing what the capture
+     *      pipeline actually receives (e.g. black frames while MHN isn't
+     *      foreground under single-app projection scope).
      *   1. Black screen pre-filter — cheapest check, gates everything else.
      *   2. Slow checks (every [SLOW_CHECK_EVERY_N_FRAMES]):
      *        a. Map detection — terminates the active handler if map is visible.
@@ -229,6 +253,8 @@ class ScreenCaptureService : Service() {
      *   3. Active handler dispatch — if a handler is active, send it the frame.
      */
     private fun routeFrame(bitmap: Bitmap) {
+
+        saveRawFrameIfEnabled(bitmap)
 
         // ── 1. Black screen pre-filter ────────────────────────────────────
         val t1 = System.currentTimeMillis()
@@ -331,6 +357,43 @@ class ScreenCaptureService : Service() {
         return when (handler) {
             is FightHandler -> "Fight in progress"
             else            -> "Capture active"
+        }
+    }
+
+    // ── Raw frame diagnostic (FrameSaveFlow.RAW) ────────────────────────────
+
+    /**
+     * Saves every frame verbatim, unconditionally — no black-screen or
+     * handler filtering — for diagnosing what the capture pipeline actually
+     * receives. Gated behind [DebugFrameSave] like the other debug flows;
+     * a no-op unless [FrameSaveFlow.RAW] is in the enabled set.
+     *
+     * Creates raw_frames/<session-timestamp>/ under [baseDir] lazily on the
+     * first save. Stops (but keeps running otherwise) once [MAX_RAW_FRAMES]
+     * is reached, so leaving the service running doesn't fill storage.
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun saveRawFrameIfEnabled(bitmap: Bitmap) {
+        if (!DebugFrameSave.shouldSave(FrameSaveFlow.RAW)) return
+        if (rawFrameIndex >= MAX_RAW_FRAMES) return
+
+        val dir = rawFrameDir ?: run {
+            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.UK).format(Date())
+            File(baseDir, "raw_frames/$timestamp").also {
+                it.mkdirs()
+                rawFrameDir = it
+                Log.d(TAG, "Raw frame directory created: ${it.path}")
+            }
+        }
+
+        val fileName = "frame_${rawFrameIndex.toString().padStart(4, '0')}.jpg"
+        FileOutputStream(File(dir, fileName)).use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+        }
+        rawFrameIndex++
+
+        if (rawFrameIndex == MAX_RAW_FRAMES) {
+            Log.w(TAG, "Raw frame cap reached ($MAX_RAW_FRAMES) — no further raw frames saved this session")
         }
     }
 

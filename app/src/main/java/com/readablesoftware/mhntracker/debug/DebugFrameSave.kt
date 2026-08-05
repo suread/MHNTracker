@@ -3,7 +3,7 @@ package com.readablesoftware.mhntracker.debug
 import androidx.annotation.VisibleForTesting
 import com.readablesoftware.mhntracker.BuildConfig
 
-enum class FrameSaveFlow { BREAK, REPORT }
+enum class FrameSaveFlow { BREAK, REPORT, RAW }
 
 object DebugFrameSave {
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
