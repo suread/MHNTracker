@@ -143,13 +143,11 @@ class OverlayBubbleService : Service() {
             }
             MotionEvent.ACTION_UP -> {
                 if (isDragging) {
-                    // Save final position
                     prefs.edit()
                         .putInt(PREF_X, layoutParams.x)
                         .putInt(PREF_Y, layoutParams.y)
                         .apply()
                 } else {
-                    // Tap — no drag occurred
                     controller.onTap()
                 }
                 true
