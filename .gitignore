@@ -42,6 +42,10 @@ utilities/*.exe
 utilities/frame_*.png
 prototypes/*.csv
 prototypes/*.png
+prototypes/runs/
+
+# Claude Code local session/config directory — not for the public repo
+.claude/
 
 # Pre-redaction originals of committed/fixture screenshots — kept locally
 # for reference in case a redaction needs redoing, never for the public repo.
