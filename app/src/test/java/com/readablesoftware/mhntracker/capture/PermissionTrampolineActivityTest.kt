@@ -10,6 +10,7 @@ import com.readablesoftware.mhntracker.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -28,16 +29,11 @@ class PermissionTrampolineActivityTest {
     // -----------------------------------------------------------------------
 
     @Test
+    @Ignore("Robolectric intercepts ActivityResultLauncher differently, so the real launch " +
+            "can't be verified here. No instrumented companion exists yet either.")
     fun `activity fires screen capture intent on create`() {
         ActivityScenario.launch(PermissionTrampolineActivity::class.java).use {
-            val started = shadowOf(context).nextStartedActivity
-            assertNull(
-                "PermissionTrampolineActivity should not start another activity directly " +
-                        "— it uses ActivityResultLauncher internally",
-                // Robolectric intercepts the ActivityResultLauncher intent differently;
-                // this test confirms the activity launches without crashing
-                null
-            )
+            // TODO: no real assertion yet — see @Ignore reason above.
         }
     }
 
@@ -73,7 +69,7 @@ class PermissionTrampolineActivityTest {
     }
 
     @Test
-    fun `denied result finishes activity2`() {
+    fun `denied result finishes activity`() {
         ActivityScenario.launch(PermissionTrampolineActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.onPermissionResult(Activity.RESULT_CANCELED, Intent())
@@ -86,18 +82,16 @@ class PermissionTrampolineActivityTest {
     // -----------------------------------------------------------------------
 
     @Test
+    @Ignore("Requires startForegroundService with a real MediaProjection token — not " +
+            "obtainable under Robolectric. See granted_result_starts_ScreenCaptureService_with_correct_extras " +
+            "in the instrumented test (also @Ignore'd — needs manual permission grant).")
     fun `granted result starts ScreenCaptureService`() {
         ActivityScenario.launch(PermissionTrampolineActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val data = Intent()
                 activity.onPermissionResult(Activity.RESULT_OK, data)
             }
-            val started = shadowOf(context).nextStartedService
-            assertNull(
-                "Service start requires startForegroundService — " +
-                        "covered by instrumented test",
-                null
-            )
+            // TODO: no real assertion yet — see @Ignore reason above.
         }
     }
 }

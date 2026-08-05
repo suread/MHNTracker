@@ -19,8 +19,6 @@ data class RgbSample(
  *   - Black screen: user has left the app or the screen has turned off while
  *     MediaProjection is still running. Used as a per-frame pre-filter —
  *     if the screen is black, no further detection work is performed.
- *     Side effect: signals the overlay bubble to hide (wired up when overlay
- *     is implemented — see TODO below).
  *
  *   - Map screen: the in-game map is visible, indicating that whatever
  *     activity was in progress has ended (fight aborted, session abandoned,
@@ -73,7 +71,6 @@ class AppStateDetector {
         // specific to grey (low saturation) rather than any bright colour.
         private const val MAP_SAT_MAX = 25
 
-        // Testing for map screen (looking for compass)
         private const val RING_GB_MIN = 230
         private const val NEEDLE_GB_MAX = 90
         private const val COMPASS_CENTRE_X = 1013
@@ -86,9 +83,6 @@ class AppStateDetector {
      *
      * Cheap: one getPixels call on a ~280×200px region, mean of all channels.
      * Intended to run on every frame as a pre-filter before any other detection.
-     *
-     * TODO: when overlay bubble is implemented, call the bubble hide signal
-     * here as a side effect on true return.
      */
     fun isBlackScreen(frame: Bitmap): Boolean {
         if (frame.width < BLACK_SAMPLE_X2 || frame.height < BLACK_SAMPLE_Y2) {
@@ -164,10 +158,7 @@ class AppStateDetector {
             classifyPoint(it)
         }
 
-//        println(points)
-//        println(pointClassification)
-//        Log.d("MHNDetect", "isValidCompassRing: RgbSamples=")
-        Log.d("MHNDetect", "isValidCompassRing: PointTypes=")
+        Log.d("MHNDetect", "isValidCompassRing: PointTypes=$pointClassification")
 
         val countCream = pointClassification.count { it == PointType.CREAM }
         if (countCream < 6) return false

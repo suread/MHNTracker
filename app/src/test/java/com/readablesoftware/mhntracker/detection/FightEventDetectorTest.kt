@@ -84,18 +84,18 @@ class FightEventDetectorTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `single orange pixel in otherwise black frame scores above zero`() {
-        // A 1x1 bitmap with a pixel matching the orange definition should
-        // produce orangeFrac = 1.0 and colCoverage = 1.0 — well above thresholds.
+    fun `crop fully filled with orange is detected`() {
+        // Filling the entire BREAK crop region with orange should produce
+        // orangeFrac = 1.0 and colCoverage = 1.0 — well above thresholds.
         // We fake a full-size frame by creating a bitmap large enough to contain
-        // the BREAK crop region, filled black, with one orange pixel inside it.
+        // the BREAK crop region, filled black, with orange throughout the crop.
         val w = BREAK_GRAPHIC_X2 + 1
         val h = BREAK_GRAPHIC_Y2 + 1
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.BLACK)
 
-        // Place an orange pixel at every position in the crop to guarantee
-        // detection — we are testing the arithmetic, not threshold sensitivity.
+        // Fill every position in the crop to guarantee detection — we are
+        // testing the arithmetic, not threshold sensitivity.
         val orange = (0xFF shl 24) or (200 shl 16) or (100 shl 8) or 50  // R=200 G=100 B=50
         for (y in BREAK_GRAPHIC_Y1 until BREAK_GRAPHIC_Y2) {
             for (x in BREAK_GRAPHIC_X1 until BREAK_GRAPHIC_X2) {
