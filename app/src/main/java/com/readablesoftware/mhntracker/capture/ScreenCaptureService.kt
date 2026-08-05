@@ -46,24 +46,13 @@ import java.util.Locale
  * Responsibilities:
  *   - Owns MediaProjection, VirtualDisplay, and ImageReader.
  *   - Runs a producer/consumer frame loop at 5fps.
- *   - Performs per-frame screen-wide checks (black screen, map) that apply
- *     regardless of which handler is active.
+ *   - Performs a per-frame black-screen pre-filter, and slow-rate map
+ *     detection, both independent of which handler is active.
  *   - Polls registered handlers at the slow-check rate to find one that wants
  *     to activate, then routes frames to it until it finishes or is terminated.
  *
- * Handler lifecycle:
- *   - Handlers are checked in registration order (priority order).
- *   - At most one handler is active at a time.
- *   - When a handler returns [HandlerStatus.DONE], it is deactivated and the
- *     router returns to polling for the next trigger.
- *   - When a map signal fires, the active handler (if any) is terminated via
- *     [SessionHandler.onTerminate] and the router returns to idle polling.
- *   - If two handlers both recognise their trigger on the same frame, the
- *     first by registration order wins; an error is logged.
- *
- * Adding a new handler:
- *   Construct it in [buildHandlers] and add it to the returned list. Priority
- *   is determined by list order — time-critical / irreversible handlers first.
+ * Handler lifecycle and priority rules: see [SessionHandler].
+ * See [buildHandlers] for how to add a new handler.
  */
 class ScreenCaptureService : Service() {
 
@@ -158,8 +147,6 @@ class ScreenCaptureService : Service() {
             baseDir            = baseDir,
         )
 
-        // Registration order = priority order.
-        // Add future handlers (InventoryHandler, etc.) below fightHandler.
         return listOf(fightHandler)
     }
 
@@ -261,7 +248,9 @@ class ScreenCaptureService : Service() {
         if (appStateDetector.isBlackScreen(bitmap)) {
             Log.d("MHNTiming", "isBlackScreen: ${System.currentTimeMillis() - t1}ms  result=true")
             Log.d(TAG, "Black screen — skipping all detection")
-            // TODO: signal overlay bubble to hide when overlay is implemented
+            // TODO: hide overlay bubble here — losing foreground sends one black frame,
+            // then nothing until MHN regains foreground, so this branch fires once per
+            // backgrounding (confirmed via raw frame capture).
             return
         }
         Log.d("MHNTiming", "isBlackScreen: ${System.currentTimeMillis() - t1}ms  result=false")

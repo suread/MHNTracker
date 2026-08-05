@@ -12,7 +12,7 @@ enum class CaptureState {
 
 class CaptureViewModel : ViewModel() {
 
-    private val _state = MutableStateFlow(CaptureState.STOPPED)  // lambda-free
+    private val _state = MutableStateFlow(CaptureState.STOPPED)
     val state: StateFlow<CaptureState> = _state
 
     fun updateState(newState: CaptureState) {

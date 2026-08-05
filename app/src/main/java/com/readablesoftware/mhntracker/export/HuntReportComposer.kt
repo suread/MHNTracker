@@ -43,7 +43,8 @@ class HuntReportComposer {
         huntReportScrolls.add(BitmapWithVerticalOffset(frame, 0))
     }
     /**
-     * build contents of huntReportCrops into single bitmap and save to png
+     * Composes all buffered hunt report frames into a single stitched bitmap
+     * and saves it as a PNG.
      */
     fun exportComposite(sessionDir: File): File {
         if (huntReportScrolls.size == 0) {
@@ -134,17 +135,13 @@ class HuntReportComposer {
     }
 
     /**
+     * Estimates the vertical scroll shift between [frameA] (older) and [frameB]
+     * (newer), using column [x1]:[x2] as the comparison region.
      *
-     *     """
-     *     Estimate the vertical scroll shift between frame_a (older) and frame_b
-     *     (newer), using the column [x_left:x_right] as the comparison region.
-     *
-     *     Crop a template of the given height from frame_a at y_top, then search
-     *     for it in frame_b within a taller region starting further up - content
-     *     that has scrolled up appears higher (smaller y) in frame_b than it was
-     *     in frame_a.
-     *     """
-     *
+     * Crops a template of [height] from [frameA] at [yTop], then searches for
+     * it in [frameB] within a taller region starting further up — content that
+     * has scrolled up appears higher (smaller y) in [frameB] than it was in
+     * [frameA].
      */
     fun measureShift(frameA: Bitmap, frameB: Bitmap, x1: Int, x2: Int, yTop: Int, height: Int, maxShift: Int): MeasuredShift {
         val matA = Mat()

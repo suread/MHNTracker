@@ -16,8 +16,6 @@ import org.junit.Ignore
 
 private fun framesFrom(directory: String): List<String> {
     val dir = File("src/test/resources/frames/$directory")
-    print("src/test/resources/frames/$directory")
-    print(dir.listFiles())
     return dir.listFiles { f -> f.extension == "png" }
         ?.map { it.name }
         ?: emptyList()

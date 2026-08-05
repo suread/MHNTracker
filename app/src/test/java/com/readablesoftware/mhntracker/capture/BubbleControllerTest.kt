@@ -67,11 +67,12 @@ class BubbleControllerTest {
 
     // -----------------------------------------------------------------------
     // Active state — MediaProjection running
+    // TODO: only ACTIVE is covered here; IN_FIGHT/FIGHT_TERMINATED untested.
     // -----------------------------------------------------------------------
 
     @Test
     fun `onTap when active stops ScreenCaptureService`() {
-        activeFlow.value = CaptureStatus.ACTIVE // TODO other active states
+        activeFlow.value = CaptureStatus.ACTIVE
         controller.onTap()
 
         val stopped = shadowOf(context).nextStoppedService
@@ -83,7 +84,7 @@ class BubbleControllerTest {
 
     @Test
     fun `onTap when active does not launch any activity`() {
-        activeFlow.value = CaptureStatus.ACTIVE // TODO other active states
+        activeFlow.value = CaptureStatus.ACTIVE
         controller.onTap()
 
         val started = shadowOf(context).nextStartedActivity
@@ -102,7 +103,7 @@ class BubbleControllerTest {
         assertNotNull("First tap inactive — activity should start", firstStarted)
 
         // Clear shadow state and flip to active
-        activeFlow.value = CaptureStatus.ACTIVE // TODO other active states
+        activeFlow.value = CaptureStatus.ACTIVE
         controller.onTap()
         val stopped = shadowOf(context).nextStoppedService
         assertNotNull("Second tap active — service should stop", stopped)

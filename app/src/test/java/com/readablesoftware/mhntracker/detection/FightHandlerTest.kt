@@ -40,7 +40,7 @@ import com.readablesoftware.mhntracker.testutil.TestFrameMaker
 class FightHandlerTest {
 
     // Same recordings/frame numbers as HuntReportDetectorTest — see
-    // MHNTracker_HuntRewards_Decisions.md "Key Frame Numbers" table.
+    // docs/local/MHNTracker_HuntRewards_Decisions.md "Key Frame Numbers" table.
     private val huntSoloR6NoBreaks    = "screen-20260527-002413-khezu.r6.urgent.no-breaks"
     private val huntGroupR6WithBreaks = "screen-20260527-002543-viper.flink.r6"
 

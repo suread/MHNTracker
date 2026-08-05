@@ -193,10 +193,6 @@ class HuntReportDetector private constructor(
         return score >= NCC_THRESHOLD
     }
 
-    // -----------------------------------------------------------------------
-    // Remaining methods unchanged from original
-    // -----------------------------------------------------------------------
-
     fun process(frames: List<Bitmap>): HuntResult? {
         TODO("Not yet implemented")
     }

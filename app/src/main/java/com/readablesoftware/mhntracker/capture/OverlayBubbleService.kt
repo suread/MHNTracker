@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.IBinder
@@ -21,6 +20,7 @@ import kotlinx.coroutines.launch
 import android.content.SharedPreferences
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class OverlayBubbleService : Service() {
@@ -52,8 +52,8 @@ class OverlayBubbleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        prefs         = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        prefs         = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         createNotificationChannel()
         startForeground(
@@ -131,7 +131,7 @@ class OverlayBubbleService : Service() {
                 val dy = (event.rawY - dragTouchY).roundToInt()
                 // Only start dragging after a small threshold to avoid
                 // accidental moves on tap
-                if (!isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+                if (!isDragging && (abs(dx) > 8 || abs(dy) > 8)) {
                     isDragging = true
                 }
                 if (isDragging) {
@@ -187,7 +187,7 @@ class OverlayBubbleService : Service() {
             "MHN Tracker Bubble",
             NotificationManager.IMPORTANCE_LOW
         )
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
     }
 

@@ -17,7 +17,6 @@ class MlKitTextDetector : TextDetector {
         val t0 = System.currentTimeMillis()
         Log.d("MHN-timing", " MLKit.detectText start: ${System.currentTimeMillis() - t0}ms")
         val image = InputImage.fromBitmap(bitmap, 0)
-//        Log.d("MHN-timing", " MLKit.detectText made image: ${System.currentTimeMillis() - t0}ms")
         recognizer.process(image)
             .addOnSuccessListener { result ->
                 Log.d(

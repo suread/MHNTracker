@@ -19,15 +19,15 @@ import android.net.Uri
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val viewModel: CaptureViewModel by viewModels()  // lambda-free
+    private val viewModel: CaptureViewModel by viewModels()
 
-    private val mediaProjectionManager by lazy {  // lambda: initialised on first access
+    private val mediaProjectionManager by lazy {
         getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     }
 
     private val projectionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()  // lambda-free
-    ) { result ->  // lambda: called when permission dialog is dismissed
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
             startCaptureService(result.resultCode, result.data!!)
         }
@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.toggleButton.setOnClickListener {  // lambda: click handler
+        binding.toggleButton.setOnClickListener {
             if (isServiceRunning()) {
                 stopCaptureService()
             } else {
@@ -46,8 +46,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        lifecycleScope.launch {  // lambda: coroutine observing state changes
-            viewModel.state.collect { state ->  // lambda: called on each state change
+        lifecycleScope.launch {
+            viewModel.state.collect { state ->
                 updateUi(state)
             }
         }
@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startCaptureService(resultCode: Int, data: Intent) {
-        val intent = Intent(this, ScreenCaptureService::class.java).apply {  // lambda
+        val intent = Intent(this, ScreenCaptureService::class.java).apply {
             putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
             putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
         }
@@ -109,12 +109,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun isServiceRunning(): Boolean {
         val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE)  // lambda-free
-            .any { it.service.className == ScreenCaptureService::class.java.name }  // lambda
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == ScreenCaptureService::class.java.name }
     }
 
     private fun updateUi(state: CaptureState) {
-        binding.toggleButton.text = when (state) {  // lambda-free, when expression
+        binding.toggleButton.text = when (state) {
             CaptureState.STOPPED   -> "Start Capture"
             CaptureState.WAITING   -> "Stop Capture"
             CaptureState.CAPTURING -> "Stop Capture"

@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.runner.RunWith
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
@@ -19,11 +18,9 @@ class MlKitTextDetectorInstrumentedTest {
 
     @Test
     fun readsTextFromCompositeBreakImage() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().context  // not .targetContext
-        //val context = InstrumentationRegistry.getInstrumentation().targetContext
-
-        val assetList = context.assets.list("")?.joinToString()
-        Log.d("MHNDebug", "Assets visible at runtime: $assetList")
+        // Must be .context, not .targetContext — using targetContext here caused
+        // assets to silently not be found, which cost a lot of debugging time.
+        val context = InstrumentationRegistry.getInstrumentation().context
 
         val bitmap = context.assets.open("break_crops.png").use { stream ->
             BitmapFactory.decodeStream(stream)
@@ -32,6 +29,9 @@ class MlKitTextDetectorInstrumentedTest {
         val detector = MlKitTextDetector()
         val result = detector.detectText(bitmap)
 
+        // Exploratory, not a pass/fail check — used to visually confirm MLKit
+        // produces meaningful text output from the break crop composite before
+        // trusting the image file it's built from.
         println("MLKit result:\n$result")
     }
 }

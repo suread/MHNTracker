@@ -6,7 +6,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// Use java.timeDateTimeFormatter for thread-safe date formatting // TODO remove SimpleDateFormat so all formatting is thread-safe by default
+// Uses java.time's DateTimeFormatter for thread-safe date formatting.
+// TODO: remove SimpleDateFormat elsewhere so all formatting is thread-safe by default.
 object ExportTimestamps {
     private val formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS", Locale.UK)
 

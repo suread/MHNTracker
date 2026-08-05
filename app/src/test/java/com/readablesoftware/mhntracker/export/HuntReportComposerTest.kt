@@ -122,7 +122,7 @@ class HuntReportComposerTest {
 
         val outputFileName = outputFile.name
 
-        // output filename expected to have format "break_crops-{timestamp}.png where timestamp has format "yyyyMMdd-HHmmss-SSS", Locale.UK
+        // output filename expected to have format "hunt_report-{timestamp}.png where timestamp has format "yyyyMMdd-HHmmss-SSS", Locale.UK
         // since this is expected to be debug only, using UK rather than user timezone is fine
         // any change - accidental or deliberate - and this test will break!
         val storeMillis = ExportTimestamps.parse(outputFileName.substring(12, outputFileName.length - 4))

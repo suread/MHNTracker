@@ -7,6 +7,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import com.readablesoftware.mhntracker.R
 
@@ -35,7 +36,7 @@ class PermissionTrampolineActivity : AppCompatActivity() {
         projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
     }
 
-    // Internal visibility so Robolectric tests can invoke directly.
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun onPermissionResult(resultCode: Int, data: Intent?) {
         if (resultCode == Activity.RESULT_OK && data != null) {
             val intent = Intent(this, ScreenCaptureService::class.java).apply {

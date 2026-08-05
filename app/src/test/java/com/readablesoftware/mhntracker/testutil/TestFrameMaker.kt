@@ -14,7 +14,6 @@ data class FrameMarker (
     val colour: Int
 )
 
-// makes a frame
 object TestFrameMaker {
 
     // make frame sized to Pixel 7 screen, with plain background and markers placed in colour/coordinates given in markers List

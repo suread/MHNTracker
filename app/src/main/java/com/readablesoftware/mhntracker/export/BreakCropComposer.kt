@@ -41,17 +41,15 @@ class BreakCropComposer {
     }
 
     /**
-     * build contents of breakTextCrops into single bitmap and save to png then empty ready for more to be added
+     * Composes all buffered break crops into a single bitmap and saves it as a PNG.
      */
     fun exportComposite(sessionDir: File): File {
-        // build contents of breakTextcrops into a single bitmap and then save as png
-
         val count = crops.size
         val width = BREAK_TEXT_X2 - BREAK_TEXT_X1
         val unitHeight = (BORDER_TOP + (BREAK_TEXT_Y2 - BREAK_TEXT_Y1) + BORDER_BOTTOM)
         val totalHeight = if (count > 0) count * unitHeight else BORDER_TOP
 
-        Log.d("storeAndFlushBreakTextCrops", "Number of break crops: $count")
+        Log.d("BreakCropComposer.exportComposite", "Number of break crops: $count")
 
         val output = createBitmap(width, totalHeight)
         val canvas = Canvas(output)
@@ -71,7 +69,7 @@ class BreakCropComposer {
             canvas.drawText(
                 ExportTimestamps.format(crops[i].timestamp),
                 textX.toFloat(), textY.toFloat(), paint)
-            Log.d("storeAndFlushBreakTextCrops", "crop index = $i; graphic location = ($xStart, $yStart); text location = ($textX, $textY)")
+            Log.d("BreakCropComposer.exportComposite", "crop index = $i; graphic location = ($xStart, $yStart); text location = ($textX, $textY)")
 
         }
 
