@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.STATUS_AREA_HEIGHT
 import com.readablesoftware.mhntracker.testutil.FrameMarker
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader
 import com.readablesoftware.mhntracker.testutil.TestFrameMaker
 import com.readablesoftware.mhntracker.testutil.TestFrameMaker.makeFrame
 import com.readablesoftware.mhntracker.util.ExportTimestamps
@@ -52,11 +53,93 @@ class HuntReportComposerTest {
 
     }
 
-    @Ignore("TODO: replace - frames should stitch aligned to their measured offset, not stacked unconditionally")
     @Test
-    fun `adding multiple frames with distinct offsets composes them in order at the correct vertical position`() {
-        // TODO: add frames via a fake measure returning distinct nonzero offsets, export, and assert
-        //  composite height and marker pixel positions reflect each frame's recorded scroll offset
+    fun `adding 2 frames with a non-zero scroll value gives a composite of expected height`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 100, confidence = 1.0),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frame = TestFrameMaker.pixel7(listOf<FrameMarker>())
+        composer.addFrame(frame)
+        composer.addFrame(frame, measure = fakeMeasure)
+
+        val compositeFile = composer.exportComposite(tempSessionDir)
+        val composite = BitmapFactory.decodeFile(compositeFile.path)
+
+        // composite for should have same width as frame, height = (frame height - 140px) + (frame height - 140px - offset) for each added frame
+
+        assertEquals(frame.width, composite.width)
+        assertEquals((frame.height - STATUS_AREA_HEIGHT) + 100, composite.height)
+
+    }
+
+
+    @Test
+    fun `adding multiple frames with non-zero offsets composes them in order at the correct vertical position`() {
+        // pixel 7 screen dimensions
+        val width = 1080
+        val height = 2400
+
+        val offset = 40
+        val scriptedResults = listOf(
+            MeasuredShift(offset = offset, confidence = 1.0),
+            MeasuredShift(offset = offset, confidence = 1.0),
+            MeasuredShift(offset = offset, confidence = 1.0),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val coloursInOrder = listOf(Color.RED, Color.CYAN, Color.BLUE)
+
+        coloursInOrder.forEach { colour ->
+            val frame = TestFrameMaker.pixel7(arrayListOf(
+                FrameMarker(0, 0, width, STATUS_AREA_HEIGHT, Color.GREEN),
+                FrameMarker(20, STATUS_AREA_HEIGHT + offset - 10, 25, STATUS_AREA_HEIGHT + offset - 5, colour)))
+            composer.addFrame(frame, measure = fakeMeasure)
+        }
+
+        val compositeFile = composer.exportComposite(tempSessionDir)
+        val composite = BitmapFactory.decodeFile(compositeFile.path)
+
+
+        // composite for each frame should have same width as frame, height = original height -140px (based on size of pixel status bar area
+        assertEquals(width, composite.width)
+        assertEquals((height - STATUS_AREA_HEIGHT) + offset * (coloursInOrder.size - 1), composite.height)
+
+        coloursInOrder.forEachIndexed { index, expectedColour ->
+            val y = offset * (index + 1) - 10
+            assertEquals(
+                "row $index should hold the crop added $index-th, in call order",
+                expectedColour,
+                composite.getPixel(20, y)
+            )
+        }
+    }
+
+    @Test
+    fun `composing two real frames with a measured scroll positions old and new content correctly`() {
+        // offset independently measured by scroll_shift_prototype.py against these exact frames (see
+        // prototypes/runs/moving scroll/run_output.txt), cross-checked against hand-picked ground_truth.csv
+        val offset = 247
+        val frameA = TestFrameLoader.loadTestFrame("hunt-report-composer/20260730-122843", 31)
+        val frameB = TestFrameLoader.loadTestFrame("hunt-report-composer/20260730-122843", 32)
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> MeasuredShift(offset = offset, confidence = 1.0) }
+
+        composer.addFrame(frameA)
+        composer.addFrame(frameB, measure = fakeMeasure)
+
+        val compositeFile = composer.exportComposite(tempSessionDir)
+        val composite = BitmapFactory.decodeFile(compositeFile.path)
+
+        assertEquals(frameA.width, composite.width)
+        assertEquals((frameA.height - STATUS_AREA_HEIGHT) + offset, composite.height)
+
+        // top of composite retains frameA's content unchanged
+        assertEquals(frameA.getPixel(20, STATUS_AREA_HEIGHT + 20), composite.getPixel(20, 20))
+        // bottom of composite is the newly revealed content from frameB
+        assertEquals(frameB.getPixel(20, frameB.height - 20), composite.getPixel(20, composite.height - 20))
     }
 
     @Test

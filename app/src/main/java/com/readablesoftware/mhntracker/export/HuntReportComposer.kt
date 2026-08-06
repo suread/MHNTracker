@@ -93,7 +93,7 @@ class HuntReportComposer {
         canvas.drawBitmap(firstFrame, srcRect, dstRect, null)
 
         for (f in huntReportScrolls) {
-            val newComposite = createBitmap(composite.width, composite.height + f.bitmap.height - STATUS_AREA_HEIGHT)
+            val newComposite = createBitmap(composite.width, composite.height + f.scroll)
             val newCanvas = Canvas(newComposite)
             val src1 = Rect(0, 0, composite.width, composite.height)
             val src2 = Rect(0, STATUS_AREA_HEIGHT, f.bitmap.width, f.bitmap.height)
