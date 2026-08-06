@@ -26,7 +26,7 @@ private fun framesFrom(directory: String): List<String> {
 class MapDetectedTest(private val frameName: String) {
 
     companion object {
-        private const val DIRECTORY = "map_detection/positive"
+        private const val DIRECTORY = "map_detection/routine/positive"
 
         @JvmStatic
         @Parameters(name = "{0}")
@@ -56,7 +56,7 @@ class MapDetectedTest(private val frameName: String) {
 class MapNotDetectedTest(private val frameName: String) {
 
     companion object {
-        private const val DIRECTORY = "map_detection/negative"
+        private const val DIRECTORY = "map_detection/routine/negative"
 
         @JvmStatic
         @Parameters(name = "{0}")
@@ -95,40 +95,16 @@ class LargeVolumeNegativeMapTests {
 
     @Test
     fun `brute force scan negative frames`() {
-        val topLevelDirectory = "map_detection/negative/_No_surplus"   // one level up from actual subfolders
+        val directory = "map_detection/brute_force/negative"
         var frameCount = 0
-        for ((subdirName, framePath) in framePathsIn(topLevelDirectory)) {
-            val frame = loadTestFrame(topLevelDirectory, framePath)
+        for (frameName in framesFrom(directory)) {
+            val frame = loadTestFrame(directory, frameName)
             frameCount++
             if (detector.isMapScreen(frame)) {
-                println("FALSE POSITIVE: $topLevelDirectory/$framePath")
+                println("FALSE POSITIVE: $directory/$frameName")
             }
         }
         println(frameCount)
-    }
-
-    @Test
-    fun `brute force scan negative frames 2`() {
-        val topLevelDirectory = "map_detection/negative/_Extra_frames"   // one level up from actual subfolders
-        var frameCount = 0
-        for ((subdirName, framePath) in framePathsIn(topLevelDirectory)) {
-            val frame = loadTestFrame(topLevelDirectory, framePath)
-            frameCount++
-            if (detector.isMapScreen(frame)) {
-                println("FALSE POSITIVE: $topLevelDirectory/$framePath")
-            }
-        }
-        println(frameCount)
-    }
-
-    private fun framePathsIn(topLevelDirectory: String): List<Pair<String, String>> {
-        val baseDir = File("src/test/resources/frames/$topLevelDirectory")
-        val subdirs = baseDir.listFiles { f -> f.isDirectory } ?: emptyArray()
-
-        return subdirs.flatMap { subdir ->
-            val pngs = subdir.listFiles { f -> f.extension == "png" } ?: emptyArray()
-            pngs.map { png -> subdir.name to "${subdir.name}/${png.name}" }
-        }
     }
 }
 
@@ -136,13 +112,13 @@ class MapDetectionTest {
 
     @Test
     fun `positive frames directory is not empty`() {
-        val frames = framesFrom("map_detection/positive")
+        val frames = framesFrom("map_detection/routine/positive")
         assertTrue("No positive test frames found", frames.isNotEmpty())
     }
 
     @Test
     fun `negative frames directory is not empty`() {
-        val frames = framesFrom("map_detection/negative")
+        val frames = framesFrom("map_detection/routine/negative")
         assertTrue("No negative test frames found", frames.isNotEmpty())
     }
 
