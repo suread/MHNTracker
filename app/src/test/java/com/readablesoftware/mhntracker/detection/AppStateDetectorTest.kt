@@ -82,6 +82,10 @@ class MapNotDetectedTest(private val frameName: String) {
 
 }
 
+// Run via gradlew, not the IDE's test runner -- thousands of per-frame println
+// lines through the IDE's IPC channel has caused Gradle to fail finalizing the
+// results file, even though the scan itself completes fine.
+//   .\gradlew.bat :app:testDebugUnitTest --tests "com.readablesoftware.mhntracker.detection.LargeVolumeNegativeMapTests" --console=plain
 @Ignore("Do not run routinely")
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -102,6 +106,32 @@ class LargeVolumeNegativeMapTests {
             frameCount++
             if (detector.isMapScreen(frame)) {
                 println("FALSE POSITIVE: $directory/$frameName")
+            }
+        }
+        println(frameCount)
+    }
+}
+
+@Ignore("Do not run routinely")
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class LargeVolumePositiveMapTests {
+    private lateinit var detector: AppStateDetector
+
+    @Before
+    fun setUp() {
+        detector = AppStateDetector()
+    }
+
+    @Test
+    fun `brute force scan positive frames`() {
+        val directory = "map_detection/brute_force/positive"
+        var frameCount = 0
+        for (frameName in framesFrom(directory)) {
+            val frame = loadTestFrame(directory, frameName)
+            frameCount++
+            if (!detector.isMapScreen(frame)) {
+                println("FALSE NEGATIVE: $directory/$frameName")
             }
         }
         println(frameCount)
