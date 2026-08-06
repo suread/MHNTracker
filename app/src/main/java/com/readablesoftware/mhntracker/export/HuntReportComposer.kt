@@ -5,6 +5,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import androidx.core.graphics.createBitmap
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_BOTTOM_MARGIN
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_CONFIDENCE_THRESHOLD
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_MAX_SHIFT
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_TEMPLATE_HEIGHT
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_TEMPLATE_STEP
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_TEMPLATE_X1
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_TEMPLATE_X2
+import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.SCROLL_TEMPLATE_Y_TOP
 import com.readablesoftware.mhntracker.detection.RewardsScreenConstants.STATUS_AREA_HEIGHT
 import com.readablesoftware.mhntracker.util.ExportTimestamps
 import org.opencv.android.Utils
@@ -33,14 +41,41 @@ class HuntReportComposer {
 
     private var huntReportScrolls = mutableListOf<BitmapWithVerticalOffset>()
 
-    fun addFrame(frame: Bitmap) {
+    fun addFrame(frame: Bitmap, measure: ShiftMeasurer = ::measureShift) {
         if (huntReportScrolls.size > 0 && frame.width != huntReportScrolls[0].bitmap.width) {
             throw IllegalArgumentException("Hunt report frames must all be same width")
         }
         if (frame.height <= STATUS_AREA_HEIGHT) {
             throw IllegalArgumentException("Hunt report frame must have height greater than area cropped for status bar")
         }
-        huntReportScrolls.add(BitmapWithVerticalOffset(frame, 0))
+
+        if (huntReportScrolls.isEmpty()) {
+            huntReportScrolls.add(BitmapWithVerticalOffset(frame, 0))
+        } else {
+            val measuredShift = findShift(
+                frameA = huntReportScrolls.last().bitmap,
+                frameB = frame,
+                x1 = SCROLL_TEMPLATE_X1,
+                x2 = SCROLL_TEMPLATE_X2,
+                yTopStart = SCROLL_TEMPLATE_Y_TOP,
+                height = SCROLL_TEMPLATE_HEIGHT,
+                maxShift = SCROLL_MAX_SHIFT,
+                step = SCROLL_TEMPLATE_STEP,
+                bottomMargin = SCROLL_BOTTOM_MARGIN,
+                confidenceThreshold = SCROLL_CONFIDENCE_THRESHOLD,
+                measure = measure
+            )
+            check(measuredShift.offset >= 0) { "shift offset must not be negative" }
+            // offset 0: same scroll position, newer frame is likely more fully rendered - replace, don't stack.
+            // unaccepted: no reliable measurement - drop the frame rather than risk a wrong assumption.
+            if (measuredShift.accepted) {
+                if (measuredShift.offset == 0) {
+                    huntReportScrolls[huntReportScrolls.lastIndex] = huntReportScrolls.last().copy(bitmap = frame)
+                } else {
+                    huntReportScrolls.add(BitmapWithVerticalOffset(frame, measuredShift.offset))
+                }
+            }
+        }
     }
     /**
      * Composes all buffered hunt report frames into a single stitched bitmap

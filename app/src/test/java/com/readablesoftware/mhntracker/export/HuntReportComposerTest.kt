@@ -52,36 +52,11 @@ class HuntReportComposerTest {
 
     }
 
+    @Ignore("TODO: replace - frames should stitch aligned to their measured offset, not stacked unconditionally")
     @Test
-    fun `adding multiple frames results in composite with correct frame order and position`() {
-        // pixel 7 screen dimensions
-        val width = 1080
-        val height = 2400
-
-        val coloursInOrder = listOf(Color.RED, Color.CYAN, Color.BLUE)
-
-        coloursInOrder.forEach { colour ->
-            val frame = TestFrameMaker.pixel7(arrayListOf(
-                FrameMarker(0, 0, width, STATUS_AREA_HEIGHT, Color.GREEN),
-                FrameMarker(20, STATUS_AREA_HEIGHT + 50, 25, STATUS_AREA_HEIGHT + 55, colour)))
-            composer.addFrame(frame)
-        }
-
-        val compositeFile = composer.exportComposite(tempSessionDir)
-        val composite = BitmapFactory.decodeFile(compositeFile.path)
-
-        // composite for single frame should have same width as frame, height = original height -140px (based on size of pixel status bar area
-        assertEquals(width, composite.width)
-        assertEquals((height - STATUS_AREA_HEIGHT) * coloursInOrder.size, composite.height)
-
-        coloursInOrder.forEachIndexed { index, expectedColour ->
-            val y = (height - STATUS_AREA_HEIGHT) * index + 50
-            assertEquals(
-                "row $index should hold the crop added $index-th, in call order",
-                expectedColour,
-                composite.getPixel(20, y)
-            )
-        }
+    fun `adding multiple frames with distinct offsets composes them in order at the correct vertical position`() {
+        // TODO: add frames via a fake measure returning distinct nonzero offsets, export, and assert
+        //  composite height and marker pixel positions reflect each frame's recorded scroll offset
     }
 
     @Test
@@ -151,6 +126,15 @@ class HuntReportComposerTest {
         val frame = makeFrame(100, STATUS_AREA_HEIGHT)
 
         composer.addFrame(frame)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `addFrame throws if measured shift offset is negative`() {
+        val frame = makeFrame(100, STATUS_AREA_HEIGHT + 1)
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> MeasuredShift(offset = -1, confidence = 1.0) }
+
+        composer.addFrame(frame)
+        composer.addFrame(frame, measure = fakeMeasure)
     }
 
     @Test
@@ -252,6 +236,28 @@ class HuntReportComposerTest {
         assertEquals(0, search.offset)
         assertFalse(search.accepted)
         assertEquals(2, callIndex)
+
+    }
+
+    @Test
+    fun `addFrame only keeps the 2nd frame if shift between them is 0`() {
+        val scriptedResults = listOf(
+            MeasuredShift(offset = 0, confidence = 1.0),
+        )
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
+
+        val frameA = makeFrame(1000, 1000, listOf(FrameMarker(200,200, 205,205, Color.RED)))
+        val frameB = makeFrame(1000, 1000, listOf(FrameMarker(200,200, 205,205, Color.GREEN)))
+
+        composer.addFrame(frameA)
+        composer.addFrame(frameB, measure = fakeMeasure)
+
+        val outputFile = composer.exportComposite(tempSessionDir)
+        val bitmap = BitmapFactory.decodeFile(outputFile.path)
+
+        assertEquals(1000 - STATUS_AREA_HEIGHT, bitmap.height)
+        assertEquals(Color.GREEN, bitmap.getPixel(200, 200 - STATUS_AREA_HEIGHT))
 
     }
 

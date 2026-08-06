@@ -5,6 +5,16 @@ object RewardsScreenConstants {
     // Hunt report scroll stitching (screen position/size measurements all based on Pixel 7)
     const val STATUS_AREA_HEIGHT = 140  // status bar band cropped off the top of every frame
 
+    // Scroll-shift detection (ported from scroll_shift_prototype.py, Pixel 7 gesture-nav)
+    const val SCROLL_TEMPLATE_X1 = 150
+    const val SCROLL_TEMPLATE_X2 = 200
+    const val SCROLL_TEMPLATE_Y_TOP = 450
+    const val SCROLL_TEMPLATE_HEIGHT = 300
+    const val SCROLL_MAX_SHIFT = 1200
+    const val SCROLL_TEMPLATE_STEP = 100
+    const val SCROLL_BOTTOM_MARGIN = 63     // gesture-nav only; on-screen nav needs more
+    const val SCROLL_CONFIDENCE_THRESHOLD = 0.9   // not device-specific
+
     // Grid layout
     const val COLUMN_X_FIRST  = 30
     const val FRAME_WIDTH     = 240
