@@ -28,6 +28,18 @@ import kotlin.io.path.createTempDirectory
 class HuntReportComposerTest {
     private lateinit var composer: HuntReportComposer
     private lateinit var tempSessionDir: File
+
+    // offsets independently measured by scroll_shift_prototype.py against the full frame set in
+    // hunt-report-composer/20260730-122843 (see prototypes/runs/moving scroll/run_output.txt)
+    private val fullSessionOffsets = listOf(
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        674,
+        0, 0, 0, 0, 0, 0, 0,
+        247,
+        292,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    )
+
     @Before
     fun setUp() {
         composer = HuntReportComposer()
@@ -140,6 +152,44 @@ class HuntReportComposerTest {
         assertEquals(frameA.getPixel(20, STATUS_AREA_HEIGHT + 20), composite.getPixel(20, 20))
         // bottom of composite is the newly revealed content from frameB
         assertEquals(frameB.getPixel(20, frameB.height - 20), composite.getPixel(20, composite.height - 20))
+    }
+
+    @Test
+    fun `composing full session reproduces the accepted composite`() {
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ ->
+            MeasuredShift(offset = fullSessionOffsets[callIndex++], confidence = 1.0)
+        }
+
+        val frames = (0..41).map { TestFrameLoader.loadTestFrame("hunt-report-composer/20260730-122843", it) }
+
+        composer.addFrame(frames[0])
+        frames.drop(1).forEach { composer.addFrame(it, measure = fakeMeasure) }
+
+        val compositeFile = composer.exportComposite(tempSessionDir)
+        val composite = BitmapFactory.decodeFile(compositeFile.path)
+
+        val acceptedComposite = TestFrameLoader.loadTestFrame(
+            "hunt-report-composer/20260730-122843", "composite_20260730-122843.png"
+        )
+
+        assertTrue("composite should match the accepted reference pixel-for-pixel", composite.sameAs(acceptedComposite))
+    }
+
+    @Test
+    fun `DIAGNOSTIC not a real test - full session composite for eyeballing`() {
+        var callIndex = 0
+        val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ ->
+            MeasuredShift(offset = fullSessionOffsets[callIndex++], confidence = 1.0)
+        }
+
+        val frames = (0..41).map { TestFrameLoader.loadTestFrame("hunt-report-composer/20260730-122843", it) }
+
+        composer.addFrame(frames[0])
+        frames.drop(1).forEach { composer.addFrame(it, measure = fakeMeasure) }
+
+        val file = composer.exportComposite(File("build/eyeball-diagnostic"))
+        println("Composite written to: ${file.absolutePath}")
     }
 
     @Test
