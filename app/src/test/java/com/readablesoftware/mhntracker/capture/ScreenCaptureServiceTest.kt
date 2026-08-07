@@ -17,10 +17,9 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 
 /**
- * Covers only the FrameSaveFlow.RAW diagnostic added to ScreenCaptureService
- * (saveRawFrameIfEnabled). The rest of the service — MediaProjection setup,
- * the producer/consumer frame loop, routeFrame's handler dispatch — is
- * pre-existing and untested; out of scope here.
+ * Covers the FrameSaveFlow.RAW diagnostic (saveRawFrameIfEnabled) and
+ * onDestroy teardown. MediaProjection setup, the producer/consumer frame
+ * loop, and routeFrame's handler dispatch remain untested; out of scope here.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -30,6 +29,7 @@ class ScreenCaptureServiceTest {
     private lateinit var service: ScreenCaptureService
     private lateinit var tempDirectory: File
     private lateinit var originalEnabled: Set<FrameSaveFlow>
+    private lateinit var originalMediaProjectionActive: CaptureStatus
 
     @Before
     fun setUp() {
@@ -37,11 +37,13 @@ class ScreenCaptureServiceTest {
         tempDirectory = createTempDirectory("screencaptureservice-test-").toFile()
         service = ScreenCaptureService().apply { baseDir = tempDirectory }
         originalEnabled = DebugFrameSave.enabled
+        originalMediaProjectionActive = AppState.mediaProjectionActive.value
     }
 
     @After
     fun tearDown() {
         DebugFrameSave.enabled = originalEnabled
+        AppState.setMediaProjectionActive(originalMediaProjectionActive)
         tempDirectory.deleteRecursively()
     }
 
@@ -97,5 +99,14 @@ class ScreenCaptureServiceTest {
 
         val frames = rawFrameSessionDir().listFiles { f -> f.name.startsWith("frame_") }
         assertEquals(ScreenCaptureService.MAX_RAW_FRAMES, frames?.size)
+    }
+
+    @Test
+    fun `onDestroy on a never-started service does not throw and resets AppState to INACTIVE`() {
+        AppState.setMediaProjectionActive(CaptureStatus.ACTIVE)
+
+        service.onDestroy()
+
+        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
     }
 }
