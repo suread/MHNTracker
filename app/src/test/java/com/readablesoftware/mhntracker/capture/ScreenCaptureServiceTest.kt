@@ -1,5 +1,7 @@
 package com.readablesoftware.mhntracker.capture
 
+import android.app.Service
+import android.content.Intent
 import androidx.core.graphics.createBitmap
 import com.readablesoftware.mhntracker.debug.DebugFrameSave
 import com.readablesoftware.mhntracker.debug.FrameSaveFlow
@@ -17,9 +19,10 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 
 /**
- * Covers the FrameSaveFlow.RAW diagnostic (saveRawFrameIfEnabled) and
- * onDestroy teardown. MediaProjection setup, the producer/consumer frame
- * loop, and routeFrame's handler dispatch remain untested; out of scope here.
+ * Covers the FrameSaveFlow.RAW diagnostic (saveRawFrameIfEnabled), onDestroy
+ * teardown, and onStartCommand's early-return paths. MediaProjection setup,
+ * the producer/consumer frame loop, and routeFrame's handler dispatch remain
+ * untested; out of scope here.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -107,6 +110,27 @@ class ScreenCaptureServiceTest {
 
         service.onDestroy()
 
+        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+    }
+
+    @Test
+    fun `onStartCommand with a null intent returns START_NOT_STICKY without starting a projection`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+
+        val result = service.onStartCommand(null, 0, 0)
+
+        assertEquals(Service.START_NOT_STICKY, result)
+        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+    }
+
+    @Test
+    fun `onStartCommand with result code but no result data returns START_NOT_STICKY without starting a projection`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val intent = Intent().putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, 1)
+
+        val result = service.onStartCommand(intent, 0, 0)
+
+        assertEquals(Service.START_NOT_STICKY, result)
         assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
     }
 }
