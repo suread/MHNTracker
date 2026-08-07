@@ -345,7 +345,8 @@ class ScreenCaptureService : Service() {
      * Returns a human-readable notification status string for the given handler.
      * Extend this when new handlers are added.
      */
-    private fun notificationTextFor(handler: SessionHandler): String {
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun notificationTextFor(handler: SessionHandler): String {
         return when (handler) {
             is FightHandler -> "Fight in progress"
             else            -> "Capture active"

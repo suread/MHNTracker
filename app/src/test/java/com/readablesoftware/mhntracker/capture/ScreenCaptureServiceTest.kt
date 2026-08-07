@@ -3,9 +3,16 @@ package com.readablesoftware.mhntracker.capture
 import android.app.Activity
 import android.app.Service
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.core.graphics.createBitmap
 import com.readablesoftware.mhntracker.debug.DebugFrameSave
 import com.readablesoftware.mhntracker.debug.FrameSaveFlow
+import com.readablesoftware.mhntracker.detection.FightEventDetector
+import com.readablesoftware.mhntracker.detection.FightHandler
+import com.readablesoftware.mhntracker.detection.FightStartDetector
+import com.readablesoftware.mhntracker.detection.HandlerStatus
+import com.readablesoftware.mhntracker.detection.HuntReportDetector
+import com.readablesoftware.mhntracker.detection.SessionHandler
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,6 +24,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLog
 import java.io.File
+import java.io.FileOutputStream
 import kotlin.io.path.createTempDirectory
 
 /**
@@ -52,6 +60,13 @@ class ScreenCaptureServiceTest {
     }
 
     private fun frame() = createBitmap(4, 4)
+
+    private fun tinyTemplateFile(name: String): String {
+        val bitmap = createBitmap(4, 4)
+        val file = File(tempDirectory, name)
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        return file.path
+    }
 
     private fun rawFramesDir() = File(tempDirectory, "raw_frames")
 
@@ -147,5 +162,33 @@ class ScreenCaptureServiceTest {
 
         assertEquals(Service.START_NOT_STICKY, result)
         assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+    }
+
+    private class NonFightSessionHandler : SessionHandler {
+        override fun recognisesTrigger(frame: Bitmap) = false
+        override fun onFrame(frame: Bitmap) = HandlerStatus.CONTINUE
+        override fun onTerminate() {}
+    }
+
+    @Test
+    fun `notificationTextFor a FightHandler returns Fight in progress`() {
+        // Trigger detection is never exercised here, so throwaway templates
+        // are sufficient — same approach as FightHandlerTest.
+        val fightHandler = FightHandler(
+            FightStartDetector.createFromFile(listOf(tinyTemplateFile("dummy_start.png"))),
+            HuntReportDetector.createFromFile(
+                tinyTemplateFile("dummy_report.png"),
+                tinyTemplateFile("dummy_rewards.png"),
+            ),
+            FightEventDetector(),
+            tempDirectory,
+        )
+
+        assertEquals("Fight in progress", service.notificationTextFor(fightHandler))
+    }
+
+    @Test
+    fun `notificationTextFor any other handler returns Capture active`() {
+        assertEquals("Capture active", service.notificationTextFor(NonFightSessionHandler()))
     }
 }
