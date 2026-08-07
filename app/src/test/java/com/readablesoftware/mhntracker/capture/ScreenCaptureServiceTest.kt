@@ -1,5 +1,6 @@
 package com.readablesoftware.mhntracker.capture
 
+import android.app.Activity
 import android.app.Service
 import android.content.Intent
 import androidx.core.graphics.createBitmap
@@ -126,7 +127,21 @@ class ScreenCaptureServiceTest {
     @Test
     fun `onStartCommand with result code but no result data returns START_NOT_STICKY without starting a projection`() {
         AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
-        val intent = Intent().putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, 1)
+        val intent = Intent().putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, Activity.RESULT_OK)
+
+        val result = service.onStartCommand(intent, 0, 0)
+
+        assertEquals(Service.START_NOT_STICKY, result)
+        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+    }
+
+    @Test
+    fun `onStartCommand with a non-OK result code returns START_NOT_STICKY without starting a projection`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val intent = Intent().apply {
+            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, Intent())
+        }
 
         val result = service.onStartCommand(intent, 0, 0)
 

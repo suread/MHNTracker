@@ -1,5 +1,6 @@
 package com.readablesoftware.mhntracker.capture
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -115,7 +116,9 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: return START_NOT_STICKY
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+            ?: return START_NOT_STICKY
+        if (resultCode != Activity.RESULT_OK) return START_NOT_STICKY
         val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
             ?: return START_NOT_STICKY
 
