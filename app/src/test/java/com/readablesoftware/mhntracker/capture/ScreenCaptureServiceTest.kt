@@ -8,6 +8,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.media.Image
+import android.media.ImageReader
 import androidx.core.graphics.createBitmap
 import com.readablesoftware.mhntracker.debug.DebugFrameSave
 import com.readablesoftware.mhntracker.debug.FrameSaveFlow
@@ -22,9 +24,14 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
@@ -33,6 +40,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLog
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import kotlin.io.path.createTempDirectory
 
 /**
@@ -382,5 +390,107 @@ class ScreenCaptureServiceTest {
         val notification = shadowOf(createdService).lastForegroundNotification
 
         assertEquals("Idle", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+    }
+
+    // captureFrame() pixel math — mocks ImageReader/Image since Robolectric
+    // has no real camera/projection pipeline to produce one.
+
+    private fun rgbaBuffer(
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int,
+        pixels: Map<Pair<Int, Int>, IntArray> = emptyMap(),
+    ): ByteBuffer {
+        val data = ByteArray(rowStride * height)
+        for ((coord, rgba) in pixels) {
+            val (col, row) = coord
+            val offset = row * rowStride + col * pixelStride
+            for (i in 0 until 4) data[offset + i] = rgba[i].toByte()
+        }
+        return ByteBuffer.wrap(data)
+    }
+
+    private fun mockImage(width: Int, height: Int, pixelStride: Int, rowStride: Int, buffer: ByteBuffer): Image {
+        val plane = mock<Image.Plane>()
+        whenever(plane.pixelStride).thenReturn(pixelStride)
+        whenever(plane.rowStride).thenReturn(rowStride)
+        whenever(plane.buffer).thenReturn(buffer)
+        val image = mock<Image>()
+        whenever(image.planes).thenReturn(arrayOf(plane))
+        whenever(image.width).thenReturn(width)
+        whenever(image.height).thenReturn(height)
+        return image
+    }
+
+    @Test
+    fun `captureFrame returns a bitmap matching source dimensions when there is no row padding`() {
+        val width = 4
+        val height = 3
+        val pixelStride = 4
+        val rowStride = pixelStride * width
+        val image = mockImage(width, height, pixelStride, rowStride, rgbaBuffer(height, rowStride, pixelStride))
+        val imageReader = mock<ImageReader>()
+        whenever(imageReader.acquireLatestImage()).thenReturn(image)
+        service.imageReader = imageReader
+
+        val bitmap = service.captureFrame()
+
+        assertEquals(width, bitmap?.width)
+        assertEquals(height, bitmap?.height)
+        verify(image, times(1)).close()
+    }
+
+    @Test
+    fun `captureFrame pads bitmap width for row stride and preserves pixel positions`() {
+        val width = 4
+        val height = 2
+        val pixelStride = 4
+        val rowStride = 24 // 8 bytes of padding beyond pixelStride * width (16)
+        // Grayscale (R=G=B) markers so the assertions don't depend on which
+        // byte-order Robolectric's native Skia binding happens to use on the
+        // host platform for ARGB_8888 — only pixel *position* is under test.
+        val buffer = rgbaBuffer(
+            height, rowStride, pixelStride,
+            mapOf(
+                (2 to 0) to intArrayOf(90, 90, 90, 255),
+                (5 to 1) to intArrayOf(200, 200, 200, 255), // within the padding-derived columns
+            ),
+        )
+        val image = mockImage(width, height, pixelStride, rowStride, buffer)
+        val imageReader = mock<ImageReader>()
+        whenever(imageReader.acquireLatestImage()).thenReturn(image)
+        service.imageReader = imageReader
+
+        val bitmap = service.captureFrame()!!
+
+        assertEquals(6, bitmap.width) // width + rowPadding / pixelStride = 4 + 8/4
+        assertEquals(height, bitmap.height)
+        assertEquals(Color.rgb(90, 90, 90), bitmap.getPixel(2, 0))
+        assertEquals(Color.rgb(200, 200, 200), bitmap.getPixel(5, 1))
+        // Neighboring, unmarked pixels stay at the buffer's zero-fill default.
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(3, 0))
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(4, 1))
+    }
+
+    @Test
+    fun `captureFrame closes the image exactly once even when an exception occurs`() {
+        val image = mock<Image>()
+        whenever(image.planes).thenThrow(RuntimeException("boom"))
+        val imageReader = mock<ImageReader>()
+        whenever(imageReader.acquireLatestImage()).thenReturn(image)
+        service.imageReader = imageReader
+
+        assertThrows(RuntimeException::class.java) { service.captureFrame() }
+
+        verify(image, times(1)).close()
+    }
+
+    @Test
+    fun `captureFrame returns null without throwing when acquireLatestImage returns null`() {
+        val imageReader = mock<ImageReader>()
+        whenever(imageReader.acquireLatestImage()).thenReturn(null)
+        service.imageReader = imageReader
+
+        assertNull(service.captureFrame())
     }
 }

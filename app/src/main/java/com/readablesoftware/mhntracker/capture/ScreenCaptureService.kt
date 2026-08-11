@@ -82,7 +82,8 @@ class ScreenCaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal var imageReader: ImageReader? = null
     private var producerJob: Job? = null
     private var consumerJob: Job? = null
 
@@ -399,7 +400,8 @@ class ScreenCaptureService : Service() {
 
     // ── Frame capture ─────────────────────────────────────────────────────
 
-    private fun captureFrame(): Bitmap? {
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun captureFrame(): Bitmap? {
         val image = imageReader?.acquireLatestImage() ?: return null
         return try {
             val planes      = image.planes
