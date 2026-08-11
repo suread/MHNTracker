@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import androidx.core.graphics.createBitmap
 import com.readablesoftware.mhntracker.debug.DebugFrameSave
 import com.readablesoftware.mhntracker.debug.FrameSaveFlow
@@ -64,6 +66,16 @@ class ScreenCaptureServiceTest {
     }
 
     private fun frame() = createBitmap(4, 4)
+
+    // Matches AppStateDetector's BLACK_SAMPLE_X2 x BLACK_SAMPLE_Y2 — the
+    // minimum size isBlackScreen samples from. Also small enough to stay
+    // below isMapScreen's compass-region size guard, so these frames can't
+    // accidentally be read as a map screen.
+    private fun blackFrame(): Bitmap =
+        createBitmap(680, 1100).also { Canvas(it).drawColor(Color.BLACK) }
+
+    private fun greyFrame(): Bitmap =
+        createBitmap(680, 1100).also { Canvas(it).drawColor(Color.rgb(128, 128, 128)) }
 
     private fun tinyTemplateFile(name: String): String {
         val bitmap = createBitmap(4, 4)
@@ -218,6 +230,32 @@ class ScreenCaptureServiceTest {
         // frames only, the third hits the slow-check branch.
         repeat(3) { service.routeFrame(frame()) }
 
+        assertEquals(1, fake.recognisesTriggerCalls)
+    }
+
+    @Test
+    fun `routeFrame skips all detection on a black frame`() {
+        val fake = FakeSessionHandler()
+        service.handlers = listOf(fake)
+
+        // Black frames never advance the slow-check counter, so even
+        // repeated calls should never reach trigger polling.
+        repeat(3) { service.routeFrame(blackFrame()) }
+
+        assertEquals(0, fake.recognisesTriggerCalls)
+    }
+
+    @Test
+    fun `routeFrame polls handlers only on the Nth non-black frame`() {
+        val fake = FakeSessionHandler()
+        service.handlers = listOf(fake)
+
+        // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two non-black frames
+        // pass the pre-filter but stay below the slow-check rate.
+        repeat(2) { service.routeFrame(greyFrame()) }
+        assertEquals(0, fake.recognisesTriggerCalls)
+
+        service.routeFrame(greyFrame())
         assertEquals(1, fake.recognisesTriggerCalls)
     }
 
