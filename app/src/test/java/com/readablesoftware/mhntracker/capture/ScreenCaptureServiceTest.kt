@@ -289,6 +289,73 @@ class ScreenCaptureServiceTest {
         assertNull(createdService.activeHandlerForTesting)
     }
 
+    // pollTriggers / active-handler dispatch — needs a Robolectric-created
+    // service since activation and DONE both call updateNotification, which
+    // needs a real attached Context.
+
+    @Test
+    fun `routeFrame activates a triggering handler without forwarding the trigger frame to onFrame`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(fake)
+
+        // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
+        // third call.
+        repeat(3) { createdService.routeFrame(greyFrame()) }
+
+        assertEquals(fake, createdService.activeHandlerForTesting)
+        assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
+        assertEquals(0, fake.onFrameCalls)
+    }
+
+    @Test
+    fun `routeFrame activates only the first-by-priority handler when two trigger on the same frame`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val first = FakeSessionHandler(triggers = true)
+        val second = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(first, second)
+
+        repeat(3) { createdService.routeFrame(greyFrame()) }
+
+        assertEquals(first, createdService.activeHandlerForTesting)
+        assertEquals(0, second.onFrameCalls)
+        val loggedError = ShadowLog.getLogs().any {
+            it.type == android.util.Log.ERROR && it.msg.contains("Multiple handlers triggered")
+        }
+        assertEquals(true, loggedError)
+    }
+
+    @Test
+    fun `routeFrame dispatches to an already-active handler and keeps it active on CONTINUE`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.CONTINUE)
+        createdService.handlers = listOf(fake)
+        createdService.pollTriggers(frame())
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        createdService.routeFrame(greyFrame())
+
+        assertEquals(1, fake.onFrameCalls)
+        assertEquals(fake, createdService.activeHandlerForTesting)
+    }
+
+    @Test
+    fun `routeFrame clears the active handler and resets AppState to ACTIVE on DONE`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.DONE)
+        createdService.handlers = listOf(fake)
+        createdService.pollTriggers(frame())
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        createdService.routeFrame(greyFrame())
+
+        assertEquals(1, fake.onFrameCalls)
+        assertNull(createdService.activeHandlerForTesting)
+        assertEquals(CaptureStatus.ACTIVE, AppState.mediaProjectionActive.value)
+    }
+
     // onCreate() via Robolectric's ServiceController — separate from the bare
     // `service` instance above, since onCreate needs a real Context (assets,
     // system services) to build handlers and post a notification.
