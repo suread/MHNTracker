@@ -1,6 +1,8 @@
 package com.readablesoftware.mhntracker.capture
 
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
@@ -19,7 +21,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLog
@@ -190,5 +194,33 @@ class ScreenCaptureServiceTest {
     @Test
     fun `notificationTextFor any other handler returns Capture active`() {
         assertEquals("Capture active", service.notificationTextFor(NonFightSessionHandler()))
+    }
+
+    // onCreate() via Robolectric's ServiceController — separate from the bare
+    // `service` instance above, since onCreate needs a real Context (assets,
+    // system services) to build handlers and post a notification.
+    //
+    // baseDir's filesDir fallback (getExternalFilesDir(null) == null) is not
+    // covered: confirmed empirically that Robolectric's default test
+    // environment always returns a non-null external files dir, so that
+    // branch isn't reachable without additional shadowing.
+
+    @Test
+    fun `onCreate creates the notification channel at IMPORTANCE_LOW`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+
+        val manager = createdService.getSystemService(NotificationManager::class.java)
+        val channel = manager.getNotificationChannel("mhn_capture_channel")
+
+        assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
+    }
+
+    @Test
+    fun `onCreate starts the service in the foreground with an Idle notification`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+
+        val notification = shadowOf(createdService).lastForegroundNotification
+
+        assertEquals("Idle", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
     }
 }
