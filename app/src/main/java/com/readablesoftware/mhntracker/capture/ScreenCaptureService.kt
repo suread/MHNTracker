@@ -90,8 +90,13 @@ class ScreenCaptureService : Service() {
     private var activeHandler: SessionHandler? = null
     private var slowCheckCounter = 0
 
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal val activeHandlerForTesting: SessionHandler?
+        get() = activeHandler
+
     // Handlers checked in priority order. Built once in onCreate.
-    private lateinit var handlers: List<SessionHandler>
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal lateinit var handlers: List<SessionHandler>
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal lateinit var baseDir: File
@@ -242,7 +247,8 @@ class ScreenCaptureService : Service() {
      *           in priority order whether it recognises its trigger.
      *   3. Active handler dispatch — if a handler is active, send it the frame.
      */
-    private fun routeFrame(bitmap: Bitmap) {
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun routeFrame(bitmap: Bitmap) {
 
         saveRawFrameIfEnabled(bitmap)
 
@@ -312,7 +318,8 @@ class ScreenCaptureService : Service() {
      * The frame is considered consumed by [SessionHandler.recognisesTrigger]
      * — the caller must not forward it to [SessionHandler.onFrame].
      */
-    private fun pollTriggers(bitmap: Bitmap) {
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun pollTriggers(bitmap: Bitmap) {
         var activated: SessionHandler? = null
 
         for (handler in handlers) {

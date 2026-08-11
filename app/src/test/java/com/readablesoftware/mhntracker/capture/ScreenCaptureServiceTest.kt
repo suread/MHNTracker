@@ -168,10 +168,20 @@ class ScreenCaptureServiceTest {
         assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
     }
 
-    private class NonFightSessionHandler : SessionHandler {
-        override fun recognisesTrigger(frame: Bitmap) = false
-        override fun onFrame(frame: Bitmap) = HandlerStatus.CONTINUE
-        override fun onTerminate() {}
+    private class FakeSessionHandler(
+        private val triggers: Boolean = false,
+        private val frameStatus: HandlerStatus = HandlerStatus.CONTINUE,
+    ) : SessionHandler {
+        var recognisesTriggerCalls = 0
+        var onFrameCalls = 0
+        var onTerminateCalls = 0
+        override fun recognisesTrigger(frame: Bitmap): Boolean {
+            recognisesTriggerCalls++; return triggers
+        }
+        override fun onFrame(frame: Bitmap): HandlerStatus {
+            onFrameCalls++; return frameStatus
+        }
+        override fun onTerminate() { onTerminateCalls++ }
     }
 
     @Test
@@ -193,7 +203,22 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `notificationTextFor any other handler returns Capture active`() {
-        assertEquals("Capture active", service.notificationTextFor(NonFightSessionHandler()))
+        assertEquals("Capture active", service.notificationTextFor(FakeSessionHandler()))
+    }
+
+    // routeFrame / pollTriggers / handlers seam smoke test — just enough to
+    // prove the plumbing works. Real coverage of black-screen filtering, map
+    // detection, and trigger/dispatch behaviour lands in later tasks.
+    @Test
+    fun `handlers set via the seam are polled by routeFrame at the slow-check rate`() {
+        val fake = FakeSessionHandler()
+        service.handlers = listOf(fake)
+
+        // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two calls are cheap
+        // frames only, the third hits the slow-check branch.
+        repeat(3) { service.routeFrame(frame()) }
+
+        assertEquals(1, fake.recognisesTriggerCalls)
     }
 
     // onCreate() via Robolectric's ServiceController — separate from the bare
