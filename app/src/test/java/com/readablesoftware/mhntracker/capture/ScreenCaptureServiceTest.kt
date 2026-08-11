@@ -17,9 +17,11 @@ import com.readablesoftware.mhntracker.detection.FightStartDetector
 import com.readablesoftware.mhntracker.detection.HandlerStatus
 import com.readablesoftware.mhntracker.detection.HuntReportDetector
 import com.readablesoftware.mhntracker.detection.SessionHandler
+import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -257,6 +259,34 @@ class ScreenCaptureServiceTest {
 
         service.routeFrame(greyFrame())
         assertEquals(1, fake.recognisesTriggerCalls)
+    }
+
+    // Real map-screen capture already validated by AppStateDetectorTest's
+    // MapDetectedTest — reused here rather than constructing a synthetic
+    // compass fixture.
+    private fun mapFrame(): Bitmap =
+        loadTestFrame("map_detection/routine/positive", "frame_0000.png")
+
+    @Test
+    fun `routeFrame terminates the active handler when a map screen is detected`() {
+        // Activation calls updateNotification, which needs a real attached
+        // Context — the bare `service` field has none, so build via
+        // Robolectric here (as task 4's onCreate tests do).
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(fake)
+        // Activate directly via the pollTriggers seam — no need to drive the
+        // slow-check counter just to get a handler active.
+        createdService.pollTriggers(frame())
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        val frame = mapFrame()
+        // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two calls dispatch to
+        // the active handler, the third hits the slow-check map detection.
+        repeat(3) { createdService.routeFrame(frame) }
+
+        assertEquals(1, fake.onTerminateCalls)
+        assertNull(createdService.activeHandlerForTesting)
     }
 
     // onCreate() via Robolectric's ServiceController — separate from the bare
