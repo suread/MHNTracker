@@ -44,10 +44,11 @@ import java.nio.ByteBuffer
 import kotlin.io.path.createTempDirectory
 
 /**
- * Covers the FrameSaveFlow.RAW diagnostic (saveRawFrameIfEnabled), onDestroy
- * teardown, and onStartCommand's early-return paths. MediaProjection setup,
- * the producer/consumer frame loop, and routeFrame's handler dispatch remain
- * untested; out of scope here.
+ * Covers ScreenCaptureService's per-frame routing (routeFrame, pollTriggers,
+ * captureFrame), lifecycle (onCreate, onDestroy), the FrameSaveFlow.RAW
+ * diagnostic, and onStartCommand's early-return paths. MediaProjection /
+ * VirtualDisplay setup and the real producer/consumer frame loop remain
+ * untested — both need a real device/emulator.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -147,6 +148,33 @@ class ScreenCaptureServiceTest {
     }
 
     @Test
+    fun `if the screen capture is stopped and restarted, a new session directory is created`() {
+        DebugFrameSave.enabled = setOf(FrameSaveFlow.RAW)
+
+        val controller1 = Robolectric.buildService(ScreenCaptureService::class.java)
+        val createdService1 = controller1.create().get().apply { baseDir = tempDirectory }
+        repeat(3) { createdService1.saveRawFrameIfEnabled(frame()) { 1786549772230 }}
+        controller1.destroy()
+
+        val controller2 = Robolectric.buildService(ScreenCaptureService::class.java)
+        val createdService2 = controller2.create().get().apply { baseDir = tempDirectory }
+        repeat(2) { createdService2.saveRawFrameIfEnabled(frame()) { 1786549773230 } } // 1 second time gap
+
+        val sessionDirs = rawFramesDir().listFiles { f -> f.isDirectory }
+        assertEquals("expected exactly 2 raw frame session directories", 2, sessionDirs?.size)
+
+        val frameNames1 = sessionDirs!![0].listFiles { f -> f.name.startsWith("frame_") }
+            ?.map { it.name }
+            ?.sorted()
+        assertEquals(listOf("frame_0000.jpg", "frame_0001.jpg", "frame_0002.jpg"), frameNames1)
+        val frameNames2 = sessionDirs[1].listFiles { f -> f.name.startsWith("frame_") }
+            ?.map { it.name }
+            ?.sorted()
+        assertEquals(listOf("frame_0000.jpg", "frame_0001.jpg"), frameNames2)
+
+    }
+
+    @Test
     fun `onDestroy on a never-started service does not throw and resets AppState to INACTIVE`() {
         AppState.setMediaProjectionActive(CaptureStatus.ACTIVE)
 
@@ -229,8 +257,8 @@ class ScreenCaptureServiceTest {
     }
 
     // routeFrame / pollTriggers / handlers seam smoke test — just enough to
-    // prove the plumbing works. Real coverage of black-screen filtering, map
-    // detection, and trigger/dispatch behaviour lands in later tasks.
+    // prove the plumbing works. Black-screen filtering, map detection, and
+    // trigger/dispatch behaviour are covered by the tests further below.
     @Test
     fun `handlers set via the seam are polled by routeFrame at the slow-check rate`() {
         val fake = FakeSessionHandler()

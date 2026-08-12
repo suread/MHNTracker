@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.util.Log
 import androidx.core.graphics.createBitmap
+import com.readablesoftware.mhntracker.util.ExportTimestamps
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -374,12 +375,12 @@ class ScreenCaptureService : Service() {
      * is reached, so leaving the service running doesn't fill storage.
      */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal fun saveRawFrameIfEnabled(bitmap: Bitmap) {
+    internal fun saveRawFrameIfEnabled(bitmap: Bitmap, clock: () -> Long = System::currentTimeMillis) {
         if (!DebugFrameSave.shouldSave(FrameSaveFlow.RAW)) return
         if (rawFrameIndex >= MAX_RAW_FRAMES) return
 
         val dir = rawFrameDir ?: run {
-            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.UK).format(Date())
+            val timestamp = ExportTimestamps.format(clock())
             File(baseDir, "raw_frames/$timestamp").also {
                 it.mkdirs()
                 rawFrameDir = it
