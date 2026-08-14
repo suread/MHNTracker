@@ -139,6 +139,19 @@ class ScreenCaptureServiceTest {
     }
 
     @Test
+    fun `black frames are saved when debug capture is enabled`() {
+        DebugFrameSave.enabled = setOf(FrameSaveFlow.RAW)
+
+        repeat(3) {
+            service.saveRawFrameIfEnabled(blackFrame())
+        }
+
+        val frames = rawFrameSessionDir().listFiles { f -> f.name.startsWith("frame_") }
+        assertEquals(3, frames?.size)
+
+    }
+
+    @Test
     fun `saving stops once the frame cap is reached`() {
         DebugFrameSave.enabled = setOf(FrameSaveFlow.RAW)
 
@@ -264,6 +277,8 @@ class ScreenCaptureServiceTest {
     // routeFrame / pollTriggers / handlers seam smoke test — just enough to
     // prove the plumbing works. Black-screen filtering, map detection, and
     // trigger/dispatch behaviour are covered by the tests further below.
+
+    //region routing frames to handlers
     @Test
     fun `handlers set via the seam are polled by routeFrame at the slow-check rate`() {
         val fake = FakeSessionHandler()
@@ -276,6 +291,92 @@ class ScreenCaptureServiceTest {
         assertEquals(1, fake.recognisesTriggerCalls)
     }
 
+    @Test
+    fun `routeFrame activates a triggering handler without forwarding the trigger frame to onFrame`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(fake)
+
+        // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
+        // third call.
+        repeat(3) { createdService.routeFrame(greyFrame()) }
+
+        assertEquals(fake, createdService.activeHandlerForTesting)
+        assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
+        assertEquals(0, fake.onFrameCalls)
+    }
+
+    @Test
+    fun `routeFrame activates only the first-by-priority handler when two trigger on the same frame`() {
+        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val first = FakeSessionHandler(triggers = true)
+        val second = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(first, second)
+
+        repeat(3) { createdService.routeFrame(greyFrame()) }
+
+        assertEquals(first, createdService.activeHandlerForTesting)
+        assertEquals(0, second.onFrameCalls)
+        val loggedError = ShadowLog.getLogs().any {
+            it.type == android.util.Log.ERROR && it.msg.contains("Multiple handlers triggered")
+        }
+        assertEquals(true, loggedError)
+    }
+
+    @Test
+    fun `routeFrame dispatches to an already-active handler and keeps it active on CONTINUE`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.CONTINUE)
+        createdService.handlers = listOf(fake)
+        createdService.pollTriggers(frame())
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        createdService.routeFrame(greyFrame())
+
+        assertEquals(1, fake.onFrameCalls)
+        assertEquals(fake, createdService.activeHandlerForTesting)
+    }
+
+    @Test
+    fun `routeFrame clears the active handler and resets AppState to ACTIVE on DONE`() {
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.DONE)
+        createdService.handlers = listOf(fake)
+        createdService.pollTriggers(frame())
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        createdService.routeFrame(greyFrame())
+
+        assertEquals(1, fake.onFrameCalls)
+        assertNull(createdService.activeHandlerForTesting)
+        assertEquals(CaptureStatus.ACTIVE, AppState.mediaProjectionActive.value)
+    }
+
+    @Test
+    fun `an active handler receives every frame, including if routed to slow-checks`() {
+        val frame = frame()
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(fake)
+        createdService.pollTriggers(frame)
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        var mapDetectionCount = 0
+        val isMapScreen = { _: Bitmap -> mapDetectionCount++; false }
+
+        repeat(3) {
+            createdService.routeFrame(frame, isMapScreen)
+        }
+
+        assertEquals(3, fake.onFrameCalls)
+        assertEquals(1, mapDetectionCount)
+
+    }
+    //endregion
+
+    //region black frame testing
     @Test
     fun `routeFrame skips all detection on a black frame`() {
         val fake = FakeSessionHandler()
@@ -301,6 +402,7 @@ class ScreenCaptureServiceTest {
         service.routeFrame(greyFrame())
         assertEquals(1, fake.recognisesTriggerCalls)
     }
+    //endregion
 
     //region map screen detection
     // Real map-screen capture already validated by AppStateDetectorTest's
@@ -396,72 +498,6 @@ class ScreenCaptureServiceTest {
     // pollTriggers / active-handler dispatch — needs a Robolectric-created
     // service since activation and DONE both call updateNotification, which
     // needs a real attached Context.
-    //endregion
-
-    //region onFrame is called when expected
-    @Test
-    fun `routeFrame activates a triggering handler without forwarding the trigger frame to onFrame`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
-        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
-        val fake = FakeSessionHandler(triggers = true)
-        createdService.handlers = listOf(fake)
-
-        // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
-        // third call.
-        repeat(3) { createdService.routeFrame(greyFrame()) }
-
-        assertEquals(fake, createdService.activeHandlerForTesting)
-        assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
-        assertEquals(0, fake.onFrameCalls)
-    }
-
-    @Test
-    fun `routeFrame activates only the first-by-priority handler when two trigger on the same frame`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
-        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
-        val first = FakeSessionHandler(triggers = true)
-        val second = FakeSessionHandler(triggers = true)
-        createdService.handlers = listOf(first, second)
-
-        repeat(3) { createdService.routeFrame(greyFrame()) }
-
-        assertEquals(first, createdService.activeHandlerForTesting)
-        assertEquals(0, second.onFrameCalls)
-        val loggedError = ShadowLog.getLogs().any {
-            it.type == android.util.Log.ERROR && it.msg.contains("Multiple handlers triggered")
-        }
-        assertEquals(true, loggedError)
-    }
-
-    @Test
-    fun `routeFrame dispatches to an already-active handler and keeps it active on CONTINUE`() {
-        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
-        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.CONTINUE)
-        createdService.handlers = listOf(fake)
-        createdService.pollTriggers(frame())
-        assertEquals(fake, createdService.activeHandlerForTesting)
-
-        createdService.routeFrame(greyFrame())
-
-        assertEquals(1, fake.onFrameCalls)
-        assertEquals(fake, createdService.activeHandlerForTesting)
-    }
-
-    @Test
-    fun `routeFrame clears the active handler and resets AppState to ACTIVE on DONE`() {
-        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
-        val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.DONE)
-        createdService.handlers = listOf(fake)
-        createdService.pollTriggers(frame())
-        assertEquals(fake, createdService.activeHandlerForTesting)
-
-        createdService.routeFrame(greyFrame())
-
-        assertEquals(1, fake.onFrameCalls)
-        assertNull(createdService.activeHandlerForTesting)
-        assertEquals(CaptureStatus.ACTIVE, AppState.mediaProjectionActive.value)
-    }
-
     //endregion
 
     //endregion routeFrame
