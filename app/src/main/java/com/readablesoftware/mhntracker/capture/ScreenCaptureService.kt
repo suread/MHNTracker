@@ -250,7 +250,7 @@ class ScreenCaptureService : Service() {
      *   3. Active handler dispatch — if a handler is active, send it the frame.
      */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal fun routeFrame(bitmap: Bitmap) {
+    internal fun routeFrame(bitmap: Bitmap, isMapScreen: (Bitmap) -> Boolean = appStateDetector::isMapScreen) {
 
         saveRawFrameIfEnabled(bitmap)
 
@@ -272,7 +272,7 @@ class ScreenCaptureService : Service() {
 
             // 2a. Map detection — valid in any state
             val t2 = System.currentTimeMillis()
-            val mapVisible = appStateDetector.isMapScreen(bitmap)
+            val mapVisible = isMapScreen(bitmap)
             Log.d("MHNTiming", "isMapScreen: ${System.currentTimeMillis() - t2}ms  result=$mapVisible")
 
             if (mapVisible) {

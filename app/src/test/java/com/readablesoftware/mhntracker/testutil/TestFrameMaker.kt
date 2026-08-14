@@ -17,7 +17,7 @@ data class FrameMarker (
 object TestFrameMaker {
 
     // make frame sized to Pixel 7 screen, with plain background and markers placed in colour/coordinates given in markers List
-    fun pixel7(markers: List<FrameMarker>, background: Int = Color.BLACK): Bitmap {
+    fun pixel7Frame(markers: List<FrameMarker>, background: Int = Color.BLACK): Bitmap {
         return makeFrame(1080, 2400, markers, background)
     }
 

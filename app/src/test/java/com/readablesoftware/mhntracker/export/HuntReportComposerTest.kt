@@ -13,7 +13,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -53,7 +52,7 @@ class HuntReportComposerTest {
 
    @Test
     fun `adding single frame gives composite size expected for frame`() {
-       val frame = TestFrameMaker.pixel7(listOf<FrameMarker>())
+       val frame = TestFrameMaker.pixel7Frame(listOf<FrameMarker>())
        composer.addFrame(frame)
 
        val compositeFile = composer.exportComposite(tempSessionDir)
@@ -73,7 +72,7 @@ class HuntReportComposerTest {
         var callIndex = 0
         val fakeMeasure: ShiftMeasurer = { _, _, _, _, _, _, _ -> scriptedResults[callIndex++]}
 
-        val frame = TestFrameMaker.pixel7(listOf<FrameMarker>())
+        val frame = TestFrameMaker.pixel7Frame(listOf<FrameMarker>())
         composer.addFrame(frame)
         composer.addFrame(frame, measure = fakeMeasure)
 
@@ -106,7 +105,7 @@ class HuntReportComposerTest {
         val coloursInOrder = listOf(Color.RED, Color.CYAN, Color.BLUE)
 
         coloursInOrder.forEach { colour ->
-            val frame = TestFrameMaker.pixel7(arrayListOf(
+            val frame = TestFrameMaker.pixel7Frame(arrayListOf(
                 FrameMarker(0, 0, width, STATUS_AREA_HEIGHT, Color.GREEN),
                 FrameMarker(20, STATUS_AREA_HEIGHT + offset - 10, 25, STATUS_AREA_HEIGHT + offset - 5, colour)))
             composer.addFrame(frame, measure = fakeMeasure)
