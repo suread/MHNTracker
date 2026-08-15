@@ -6,13 +6,14 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
 import android.media.Image
 import android.media.ImageReader
 import androidx.core.graphics.createBitmap
+import com.readablesoftware.mhntracker.capture.ScreenCaptureService.Companion.SLOW_CHECK_EVERY_N_FRAMES
 import com.readablesoftware.mhntracker.debug.DebugFrameSave
 import com.readablesoftware.mhntracker.debug.FrameSaveFlow
+import com.readablesoftware.mhntracker.detection.AppStateDetector
 import com.readablesoftware.mhntracker.detection.FightEventDetector
 import com.readablesoftware.mhntracker.detection.FightHandler
 import com.readablesoftware.mhntracker.detection.FightStartDetector
@@ -20,7 +21,7 @@ import com.readablesoftware.mhntracker.detection.HandlerStatus
 import com.readablesoftware.mhntracker.detection.HuntReportDetector
 import com.readablesoftware.mhntracker.detection.SessionHandler
 import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
-import com.readablesoftware.mhntracker.testutil.TestFrameMaker.pixel7Frame
+import com.readablesoftware.mhntracker.testutil.TestFrameMaker.makeFrame
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,10 +31,13 @@ import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
+//import org.mockito.ArgumentMatchers.any
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.doAnswer
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
@@ -85,10 +89,10 @@ class ScreenCaptureServiceTest {
     // below isMapScreen's compass-region size guard, so these frames can't
     // accidentally be read as a map screen.
     private fun blackFrame(): Bitmap =
-        createBitmap(680, 1100).also { Canvas(it).drawColor(Color.BLACK) }
+        makeFrame(680, 1100, listOf(), Color.BLACK)
 
     private fun greyFrame(): Bitmap =
-        createBitmap(680, 1100).also { Canvas(it).drawColor(Color.rgb(128, 128, 128)) }
+        makeFrame(680, 1100, listOf(), Color.rgb(128, 128, 128))
 
     private fun tinyTemplateFile(name: String): String {
         val bitmap = createBitmap(4, 4)
@@ -97,7 +101,7 @@ class ScreenCaptureServiceTest {
         return file.path
     }
 
-    //region saving raw debug frames
+    //region SAVING RAW DEBUG FRAMES
     private fun rawFramesDir() = File(tempDirectory, "raw_frames")
 
     private fun rawFrameSessionDir(): File {
@@ -273,12 +277,12 @@ class ScreenCaptureServiceTest {
         assertEquals("Capture active", service.notificationTextFor(FakeSessionHandler()))
     }
 
-    //region routeFrame tests
+    //region ROUTEFRAME TESTS
     // routeFrame / pollTriggers / handlers seam smoke test — just enough to
     // prove the plumbing works. Black-screen filtering, map detection, and
     // trigger/dispatch behaviour are covered by the tests further below.
 
-    //region routing frames to handlers
+    //region ROUTING FRAMES TO HANDLERS
     @Test
     fun `handlers set via the seam are polled by routeFrame at the slow-check rate`() {
         val fake = FakeSessionHandler()
@@ -361,24 +365,82 @@ class ScreenCaptureServiceTest {
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
         createdService.pollTriggers(frame)
+        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        createdService.appStateDetector = appStateDetector
         assertEquals(fake, createdService.activeHandlerForTesting)
 
         var mapDetectionCount = 0
         val isMapScreen = { _: Bitmap -> mapDetectionCount++; false }
 
         repeat(3) {
-            createdService.routeFrame(frame, isMapScreen)
+            createdService.routeFrame(frame)
         }
 
         assertEquals(3, fake.onFrameCalls)
-        assertEquals(1, mapDetectionCount)
+        verify(createdService.appStateDetector, times(1)).isMapScreen(any())
 
     }
     //endregion
 
-    //region black frame testing
+    //region BLACK FRAME TESTING
+
+    fun numberOfFramesToMapCheck(): Int {
+        // need to wrap the check variable since Mockito uses Java SAM interface
+        val isMapScreenCalled = booleanArrayOf(false)
+
+        whenever(service.appStateDetector.isMapScreen(any())).thenAnswer() { isMapScreenCalled[0] = true; false }
+
+        var count = 0
+        val frame = greyFrame()
+        while (!isMapScreenCalled[0] && count < SLOW_CHECK_EVERY_N_FRAMES * 2) {
+            count++
+            service.routeFrame(frame)
+        }
+        return count
+    }
+
     @Test
-    fun `routeFrame skips all detection on a black frame`() {
+    fun `routeFrame leaves the slow frame check count for map detection untouched when black frames are detected`() {
+        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        service.handlers = listOf()
+        service.appStateDetector = appStateDetector
+
+        val blackFrame = blackFrame()
+        val notBlackFrame = greyFrame()
+        whenever(appStateDetector.isBlackScreen(blackFrame)).thenReturn(true)
+        whenever(appStateDetector.isBlackScreen(notBlackFrame)).thenReturn(false)
+
+        // ensure slow check cadence is expected value before we start
+        assertEquals(3, numberOfFramesToMapCheck())
+
+        // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
+        service.routeFrame(blackFrame)
+        assertEquals(3, numberOfFramesToMapCheck())
+
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(blackFrame)
+        assertEquals(2, numberOfFramesToMapCheck())
+
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(blackFrame)
+        assertEquals(1, numberOfFramesToMapCheck())
+
+    }
+
+    private fun numberOfFramesToHandlerTriggerCheck(fake: FakeSessionHandler): Int {
+        val triggersToStart = fake.recognisesTriggerCalls
+        var count = 0
+        val frame = greyFrame()
+        while ((fake.recognisesTriggerCalls - triggersToStart) == 0 && count < 6) {
+            count++
+            service.routeFrame(frame)
+        }
+        return count
+    }
+
+    @Test
+    fun `routeFrame leaves the slow frame check count for handler triggers untouched when black frames are detected`() {
         val fake = FakeSessionHandler()
         service.handlers = listOf(fake)
 
@@ -387,6 +449,26 @@ class ScreenCaptureServiceTest {
         repeat(3) { service.routeFrame(blackFrame()) }
 
         assertEquals(0, fake.recognisesTriggerCalls)
+
+        val blackFrame = blackFrame()
+        val notBlackFrame = greyFrame()
+
+        // ensure slow check cadence is expected value before we start
+        assertEquals(3, numberOfFramesToHandlerTriggerCheck(fake))
+
+        // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
+        service.routeFrame(blackFrame)
+        assertEquals(3, numberOfFramesToHandlerTriggerCheck(fake))
+
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(blackFrame)
+        assertEquals(2, numberOfFramesToHandlerTriggerCheck(fake))
+
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(notBlackFrame)
+        service.routeFrame(blackFrame)
+        assertEquals(1, numberOfFramesToHandlerTriggerCheck(fake))
+
     }
 
     @Test
@@ -404,46 +486,89 @@ class ScreenCaptureServiceTest {
     }
     //endregion
 
-    //region map screen detection
+    //region MAP SCREEN DETECTION
     // Real map-screen capture already validated by AppStateDetectorTest's
     // MapDetectedTest — reused here rather than constructing a synthetic
     // compass fixture.
     private fun mapFrame(): Bitmap =
         loadTestFrame("map_detection/routine/positive", "frame_0000.png")
 
+    private fun mockAppStateDetector(): AppStateDetector {
+        val appStateDetector = mock<AppStateDetector>()
+        whenever(appStateDetector.isBlackScreen(any())).thenReturn(false)
+        return appStateDetector
+    }
+
+    private fun mockAppStateDetectorMapAlwaysFalse(frame: Bitmap? = null): AppStateDetector {
+        val appStateDetector = mockAppStateDetector()
+        if (frame == null) {
+            whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
+        } else {
+            whenever(appStateDetector.isMapScreen(frame)).thenReturn(false)
+        }
+        return appStateDetector
+    }
 
     @Test
     fun `routeFrame uses slow check cadence for detecting map screens`() {
-        var mapDetectionCount = 0
-        val isMapScreen = { bitmap: Bitmap -> mapDetectionCount++; false }
+        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        service.appStateDetector = appStateDetector
+
         val frame = frame()
         service.handlers = listOf()
 
         repeat(6) {
-            service.routeFrame(frame, isMapScreen)
+            service.routeFrame(frame)
         }
 
-        assertEquals(2, mapDetectionCount)
+        verify(appStateDetector, times(2)).isMapScreen(any())
     }
 
     @Test
     fun `routeFrame does not send a frame to the active handler after that frame has been detected as map`() {
         val frame = frame()
+        val appStateDetector = mockAppStateDetector()
+        whenever(appStateDetector.isMapScreen(any())).thenReturn(true)
+
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
+        createdService.appStateDetector = appStateDetector
+
         createdService.pollTriggers(frame)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        val isMapScreen = { _: Bitmap -> true }
-
         repeat(3) {
-            createdService.routeFrame(frame, isMapScreen)
+            createdService.routeFrame(frame)
         }
 
+        verify(appStateDetector, times(1)).isMapScreen(any())
         assertEquals(2, fake.onFrameCalls)
         assertEquals(1, fake.onTerminateCalls)
         assertNull(createdService.activeHandlerForTesting)
+    }
+
+    @Test
+    fun `routeFrame does not send terminate to the active handler when a map screen check returns false`() {
+        val frame = frame()
+        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+
+        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
+        val fake = FakeSessionHandler(triggers = true)
+        createdService.handlers = listOf(fake)
+        createdService.appStateDetector = appStateDetector
+
+        createdService.pollTriggers(frame)
+        assertEquals(fake, createdService.activeHandlerForTesting)
+
+        repeat(3) {
+            createdService.routeFrame(frame)
+        }
+
+        verify(appStateDetector, times(1)).isMapScreen(any())
+        assertEquals(3, fake.onFrameCalls)
+        assertEquals(0, fake.onTerminateCalls)
+        assertEquals(fake, createdService.activeHandlerForTesting)
 
     }
 
@@ -477,20 +602,26 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
+
         // Activate directly via the pollTriggers seam — no need to drive the
         // slow-check counter just to get a handler active.
         createdService.pollTriggers(frame())
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        val notMapFrame = pixel7Frame(listOf(), Color.GRAY)
-        val mapFrame = mapFrame()
+        val frame = frame()
+        val appStateDetector = mock<AppStateDetector>()
+        createdService.appStateDetector = appStateDetector
+        whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — so only 3rd frame hits the map detection
-        repeat(3) { createdService.routeFrame(notMapFrame) }
+        repeat(3) { createdService.routeFrame(frame) }
+        verify(appStateDetector, times(1)).isMapScreen(frame)
         assertEquals(0, fake.onTerminateCalls)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        repeat(3) { createdService.routeFrame(mapFrame) }
+        whenever(appStateDetector.isMapScreen(any())).thenReturn(true)
+        repeat(3) { createdService.routeFrame(frame) }
+        verify(appStateDetector, times(2)).isMapScreen(frame)
         assertEquals(1, fake.onTerminateCalls)
         assertNull(createdService.activeHandlerForTesting)
     }

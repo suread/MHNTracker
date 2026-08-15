@@ -71,7 +71,8 @@ class ScreenCaptureService : Service() {
 
         // Slow checks (map detection, trigger polling) run every Nth frame
         // consumed by the consumer. 3 × 200ms = 600ms between slow checks.
-        private const val SLOW_CHECK_EVERY_N_FRAMES = 3
+        @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+        internal const val SLOW_CHECK_EVERY_N_FRAMES = 3
 
         // Safety cap for FrameSaveFlow.RAW: 300 × 200ms = 60 seconds — enough
         // to switch apps and back without filling storage if left running.
@@ -108,7 +109,8 @@ class ScreenCaptureService : Service() {
     private var rawFrameDir: File? = null
     private var rawFrameIndex = 0
 
-    private val appStateDetector = AppStateDetector()
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal var appStateDetector = AppStateDetector()
     private val serviceScope = CoroutineScope(Dispatchers.IO)
     private val frameChannel = Channel<Bitmap>(capacity = FRAME_CHANNEL_CAPACITY)
 
@@ -250,7 +252,7 @@ class ScreenCaptureService : Service() {
      *   3. Active handler dispatch — if a handler is active, send it the frame.
      */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal fun routeFrame(bitmap: Bitmap, isMapScreen: (Bitmap) -> Boolean = appStateDetector::isMapScreen) {
+    internal fun routeFrame(bitmap: Bitmap) {
 
         saveRawFrameIfEnabled(bitmap)
 
@@ -272,7 +274,7 @@ class ScreenCaptureService : Service() {
 
             // 2a. Map detection — valid in any state
             val t2 = System.currentTimeMillis()
-            val mapVisible = isMapScreen(bitmap)
+            val mapVisible = appStateDetector.isMapScreen(bitmap)
             Log.d("MHNTiming", "isMapScreen: ${System.currentTimeMillis() - t2}ms  result=$mapVisible")
 
             if (mapVisible) {
