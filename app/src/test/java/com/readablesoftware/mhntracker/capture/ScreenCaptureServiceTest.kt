@@ -290,7 +290,7 @@ class ScreenCaptureServiceTest {
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two calls are cheap
         // frames only, the third hits the slow-check branch.
-        repeat(3) { service.routeFrame(frame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { service.routeFrame(frame()) }
 
         assertEquals(1, fake.recognisesTriggerCalls)
     }
@@ -304,7 +304,7 @@ class ScreenCaptureServiceTest {
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
         // third call.
-        repeat(3) { createdService.routeFrame(greyFrame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(greyFrame()) }
 
         assertEquals(fake, createdService.activeHandlerForTesting)
         assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
@@ -319,7 +319,7 @@ class ScreenCaptureServiceTest {
         val second = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(first, second)
 
-        repeat(3) { createdService.routeFrame(greyFrame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(greyFrame()) }
 
         assertEquals(first, createdService.activeHandlerForTesting)
         assertEquals(0, second.onFrameCalls)
@@ -372,11 +372,11 @@ class ScreenCaptureServiceTest {
         var mapDetectionCount = 0
         val isMapScreen = { _: Bitmap -> mapDetectionCount++; false }
 
-        repeat(3) {
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) {
             createdService.routeFrame(frame)
         }
 
-        assertEquals(3, fake.onFrameCalls)
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, fake.onFrameCalls)
         verify(createdService.appStateDetector, times(1)).isMapScreen(any())
 
     }
@@ -411,20 +411,20 @@ class ScreenCaptureServiceTest {
         whenever(appStateDetector.isBlackScreen(notBlackFrame)).thenReturn(false)
 
         // ensure slow check cadence is expected value before we start
-        assertEquals(3, numberOfFramesToMapCheck())
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToMapCheck())
 
         // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
         service.routeFrame(blackFrame)
-        assertEquals(3, numberOfFramesToMapCheck())
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToMapCheck())
 
         service.routeFrame(notBlackFrame)
         service.routeFrame(blackFrame)
-        assertEquals(2, numberOfFramesToMapCheck())
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 1, numberOfFramesToMapCheck())
 
         service.routeFrame(notBlackFrame)
         service.routeFrame(notBlackFrame)
         service.routeFrame(blackFrame)
-        assertEquals(1, numberOfFramesToMapCheck())
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 2, numberOfFramesToMapCheck())
 
     }
 
@@ -454,20 +454,20 @@ class ScreenCaptureServiceTest {
         val notBlackFrame = greyFrame()
 
         // ensure slow check cadence is expected value before we start
-        assertEquals(3, numberOfFramesToHandlerTriggerCheck(fake))
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToHandlerTriggerCheck(fake))
 
         // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
         service.routeFrame(blackFrame)
-        assertEquals(3, numberOfFramesToHandlerTriggerCheck(fake))
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToHandlerTriggerCheck(fake))
 
         service.routeFrame(notBlackFrame)
         service.routeFrame(blackFrame)
-        assertEquals(2, numberOfFramesToHandlerTriggerCheck(fake))
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 1, numberOfFramesToHandlerTriggerCheck(fake))
 
         service.routeFrame(notBlackFrame)
         service.routeFrame(notBlackFrame)
         service.routeFrame(blackFrame)
-        assertEquals(1, numberOfFramesToHandlerTriggerCheck(fake))
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 2, numberOfFramesToHandlerTriggerCheck(fake))
 
     }
 
@@ -478,7 +478,7 @@ class ScreenCaptureServiceTest {
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two non-black frames
         // pass the pre-filter but stay below the slow-check rate.
-        repeat(2) { service.routeFrame(greyFrame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES - 1) { service.routeFrame(greyFrame()) }
         assertEquals(0, fake.recognisesTriggerCalls)
 
         service.routeFrame(greyFrame())
@@ -511,17 +511,18 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `routeFrame uses slow check cadence for detecting map screens`() {
+        val cadenceRepeat = 2
         val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
         service.appStateDetector = appStateDetector
 
         val frame = frame()
         service.handlers = listOf()
 
-        repeat(6) {
+        repeat(SLOW_CHECK_EVERY_N_FRAMES * cadenceRepeat) {
             service.routeFrame(frame)
         }
 
-        verify(appStateDetector, times(2)).isMapScreen(any())
+        verify(appStateDetector, times(cadenceRepeat)).isMapScreen(any())
     }
 
     @Test
@@ -538,12 +539,12 @@ class ScreenCaptureServiceTest {
         createdService.pollTriggers(frame)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        repeat(3) {
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) {
             createdService.routeFrame(frame)
         }
 
         verify(appStateDetector, times(1)).isMapScreen(any())
-        assertEquals(2, fake.onFrameCalls)
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 1, fake.onFrameCalls)
         assertEquals(1, fake.onTerminateCalls)
         assertNull(createdService.activeHandlerForTesting)
     }
@@ -561,12 +562,12 @@ class ScreenCaptureServiceTest {
         createdService.pollTriggers(frame)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        repeat(3) {
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) {
             createdService.routeFrame(frame)
         }
 
         verify(appStateDetector, times(1)).isMapScreen(any())
-        assertEquals(3, fake.onFrameCalls)
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, fake.onFrameCalls)
         assertEquals(0, fake.onTerminateCalls)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
@@ -596,6 +597,7 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `routeFrame map screen detection (positive and negative) works when default map check is used`() {
+        // TODO this is going
         // Activation calls updateNotification, which needs a real attached
         // Context — the bare `service` field has none, so build via
         // Robolectric here (as task 4's onCreate tests do).
@@ -614,13 +616,13 @@ class ScreenCaptureServiceTest {
         whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — so only 3rd frame hits the map detection
-        repeat(3) { createdService.routeFrame(frame) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame) }
         verify(appStateDetector, times(1)).isMapScreen(frame)
         assertEquals(0, fake.onTerminateCalls)
         assertEquals(fake, createdService.activeHandlerForTesting)
 
         whenever(appStateDetector.isMapScreen(any())).thenReturn(true)
-        repeat(3) { createdService.routeFrame(frame) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame) }
         verify(appStateDetector, times(2)).isMapScreen(frame)
         assertEquals(1, fake.onTerminateCalls)
         assertNull(createdService.activeHandlerForTesting)
