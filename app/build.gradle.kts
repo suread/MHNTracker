@@ -53,6 +53,14 @@ android {
     }
 }
 
+// Resolves just the mockito-core jar (no transitive deps) so it can be passed
+// as a -javaagent path below. Mockito's inline mock maker otherwise self-attaches
+// as an agent at runtime, which newer JDKs warn about and will eventually block.
+val mockitoAgent: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+
 dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
@@ -88,6 +96,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.mockito.kotlin)
+    mockitoAgent(libs.mockito.core)
 
 }
 
@@ -122,6 +131,11 @@ tasks.register<Exec>("backupTriggerLog") {
 }
 
 tasks.withType<Test>().configureEach {
+    // Deferred (not resolved at configuration time) via CommandLineArgumentProvider —
+    // resolving the mockitoAgent configuration eagerly here breaks other tasks' configuration.
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-javaagent:${mockitoAgent.singleFile}")
+    })
     extensions.configure<JacocoTaskExtension> {
         // Robolectric loads shadowed classes through its own SandboxClassLoader, which
         // JaCoCo's exec-data writer otherwise drops as "no location" classes, producing
