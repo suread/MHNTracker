@@ -172,9 +172,7 @@ class BreakCropComposerTest {
 
     @Test
     fun `export produces a bitmap with filename matching time it was generated`() {
-        val beforeMillis = System.currentTimeMillis()
-        val outputFile = composer.exportComposite(tempSessionDir)
-        val afterMillis = System.currentTimeMillis()
+        val outputFile = composer.exportComposite(tempSessionDir, 1786549772230)
 
         val outputFileName = outputFile.name
 
@@ -183,7 +181,7 @@ class BreakCropComposerTest {
         // any change - accidental or deliberate - and this test will break!
         val storeMillis = ExportTimestamps.parse(outputFileName.substring(12, outputFileName.length - 4))
 
-        assertTrue(storeMillis in beforeMillis..afterMillis)
+        assertEquals(1786549772230, storeMillis)
     }
 
     @Test
@@ -196,8 +194,8 @@ class BreakCropComposerTest {
     @Test
     fun `calling export twice results in 2 distinctly named files`() {
 
-        val file1 = composer.exportComposite(tempSessionDir)
-        val file2 = composer.exportComposite(tempSessionDir)
+        val file1 = composer.exportComposite(tempSessionDir, 1786549772230)
+        val file2 = composer.exportComposite(tempSessionDir, 1786549773230)
 
         assertTrue(file1.name != file2.name)
         assertEquals(2, tempSessionDir.listFiles()!!.size)

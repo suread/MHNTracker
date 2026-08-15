@@ -43,7 +43,7 @@ class BreakCropComposer {
     /**
      * Composes all buffered break crops into a single bitmap and saves it as a PNG.
      */
-    fun exportComposite(sessionDir: File): File {
+    fun exportComposite(sessionDir: File, capturedAt: Long = System.currentTimeMillis()): File {
         val count = crops.size
         val width = BREAK_TEXT_X2 - BREAK_TEXT_X1
         val unitHeight = (BORDER_TOP + (BREAK_TEXT_Y2 - BREAK_TEXT_Y1) + BORDER_BOTTOM)
@@ -75,7 +75,7 @@ class BreakCropComposer {
 
         val dir = sessionDir
         dir.mkdirs()   // defensive: recreate if deleted mid-session
-        val file = File(dir, "break_crops-${ExportTimestamps.format(System.currentTimeMillis())}.png")
+        val file = File(dir, "break_crops-${ExportTimestamps.format(capturedAt)}.png")
         FileOutputStream(file).use { stream ->
             output.compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
