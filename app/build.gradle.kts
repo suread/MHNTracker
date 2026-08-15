@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
+    jacoco
 }
 
 android {
@@ -22,6 +23,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableAndroidTestCoverage = true
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -115,6 +119,30 @@ tasks.register<Exec>("backupTriggerLog") {
         backupDestDir.absolutePath
     )
     isIgnoreExitValue = true // don't fail the build if the log doesn't exist yet (first run)
+}
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        // Robolectric loads shadowed classes through its own SandboxClassLoader, which
+        // JaCoCo's exec-data writer otherwise drops as "no location" classes, producing
+        // a report that shows 0% coverage for every Robolectric-based test.
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+    }
+    val fileFilter = listOf("**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*")
+    classDirectories.setFrom(
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) { exclude(fileFilter) }
+    )
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(fileTree(buildDir) { include("**/testDebugUnitTest.exec", "**/jacoco/testDebugUnitTest.exec") })
 }
 
 afterEvaluate {
