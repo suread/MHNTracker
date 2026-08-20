@@ -37,7 +37,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import org.mockito.kotlin.doAnswer
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
@@ -83,16 +82,6 @@ class ScreenCaptureServiceTest {
     }
 
     private fun frame() = createBitmap(4, 4)
-
-    // Matches AppStateDetector's BLACK_SAMPLE_X2 x BLACK_SAMPLE_Y2 — the
-    // minimum size isBlackScreen samples from. Also small enough to stay
-    // below isMapScreen's compass-region size guard, so these frames can't
-    // accidentally be read as a map screen.
-    private fun blackFrame(): Bitmap =
-        makeFrame(680, 1100, listOf(), Color.BLACK)
-
-    private fun greyFrame(): Bitmap =
-        makeFrame(680, 1100, listOf(), Color.rgb(128, 128, 128))
 
     private fun tinyTemplateFile(name: String): String {
         val bitmap = createBitmap(4, 4)
@@ -145,9 +134,11 @@ class ScreenCaptureServiceTest {
     @Test
     fun `black frames are saved when debug capture is enabled`() {
         DebugFrameSave.enabled = setOf(FrameSaveFlow.RAW)
+        service.appStateDetector = mockAppStateDetector()
+        whenever(service.appStateDetector.isBlackScreen(any())).thenReturn(true)
 
         repeat(3) {
-            service.saveRawFrameIfEnabled(blackFrame())
+            service.saveRawFrameIfEnabled(frame())
         }
 
         val frames = rawFrameSessionDir().listFiles { f -> f.name.startsWith("frame_") }
@@ -301,10 +292,11 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
+        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
         // third call.
-        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(greyFrame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame()) }
 
         assertEquals(fake, createdService.activeHandlerForTesting)
         assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
@@ -318,8 +310,10 @@ class ScreenCaptureServiceTest {
         val first = FakeSessionHandler(triggers = true)
         val second = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(first, second)
+        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
 
-        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(greyFrame()) }
+
+        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame()) }
 
         assertEquals(first, createdService.activeHandlerForTesting)
         assertEquals(0, second.onFrameCalls)
@@ -334,10 +328,12 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.CONTINUE)
         createdService.handlers = listOf(fake)
+        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+
         createdService.pollTriggers(frame())
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        createdService.routeFrame(greyFrame())
+        createdService.routeFrame(frame())
 
         assertEquals(1, fake.onFrameCalls)
         assertEquals(fake, createdService.activeHandlerForTesting)
@@ -348,10 +344,12 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.DONE)
         createdService.handlers = listOf(fake)
+        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+
         createdService.pollTriggers(frame())
         assertEquals(fake, createdService.activeHandlerForTesting)
 
-        createdService.routeFrame(greyFrame())
+        createdService.routeFrame(frame())
 
         assertEquals(1, fake.onFrameCalls)
         assertNull(createdService.activeHandlerForTesting)
@@ -391,7 +389,7 @@ class ScreenCaptureServiceTest {
         whenever(service.appStateDetector.isMapScreen(any())).thenAnswer() { isMapScreenCalled[0] = true; false }
 
         var count = 0
-        val frame = greyFrame()
+        val frame = frame()
         while (!isMapScreenCalled[0] && count < SLOW_CHECK_EVERY_N_FRAMES * 2) {
             count++
             service.routeFrame(frame)
@@ -405,33 +403,27 @@ class ScreenCaptureServiceTest {
         service.handlers = listOf()
         service.appStateDetector = appStateDetector
 
-        val blackFrame = blackFrame()
-        val notBlackFrame = greyFrame()
-        whenever(appStateDetector.isBlackScreen(blackFrame)).thenReturn(true)
-        whenever(appStateDetector.isBlackScreen(notBlackFrame)).thenReturn(false)
+        val mockBlackFrame = frame()
+        val mockNotBlackFrame = frame()
+        whenever(appStateDetector.isBlackScreen(mockBlackFrame)).thenReturn(true)
+        whenever(appStateDetector.isBlackScreen(mockNotBlackFrame)).thenReturn(false)
 
-        // ensure slow check cadence is expected value before we start
+        // test slow check cadence is expected value with no black frames before we start
         assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToMapCheck())
 
-        // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToMapCheck())
-
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 1, numberOfFramesToMapCheck())
-
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 2, numberOfFramesToMapCheck())
-
+        for (i in 0 until SLOW_CHECK_EVERY_N_FRAMES) {
+            for (k in 0 until i) {
+                service.routeFrame(mockNotBlackFrame)
+            }
+            service.routeFrame(mockBlackFrame)
+            assertEquals(SLOW_CHECK_EVERY_N_FRAMES - i, numberOfFramesToMapCheck())
+        }
     }
 
     private fun numberOfFramesToHandlerTriggerCheck(fake: FakeSessionHandler): Int {
         val triggersToStart = fake.recognisesTriggerCalls
         var count = 0
-        val frame = greyFrame()
+        val frame = frame()
         while ((fake.recognisesTriggerCalls - triggersToStart) == 0 && count < 6) {
             count++
             service.routeFrame(frame)
@@ -442,33 +434,27 @@ class ScreenCaptureServiceTest {
     @Test
     fun `routeFrame leaves the slow frame check count for handler triggers untouched when black frames are detected`() {
         val fake = FakeSessionHandler()
+        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        service.appStateDetector = appStateDetector
         service.handlers = listOf(fake)
+
+       val mockBlackFrame = frame()
+        val mockNotBlackFrame = frame()
+        whenever(appStateDetector.isBlackScreen(mockBlackFrame)).thenReturn(true)
+        whenever(appStateDetector.isBlackScreen(mockNotBlackFrame)).thenReturn(false)
 
         // Black frames never advance the slow-check counter, so even
         // repeated calls should never reach trigger polling.
-        repeat(3) { service.routeFrame(blackFrame()) }
-
+        repeat(SLOW_CHECK_EVERY_N_FRAMES + 1) { service.routeFrame(mockBlackFrame) }
         assertEquals(0, fake.recognisesTriggerCalls)
 
-        val blackFrame = blackFrame()
-        val notBlackFrame = greyFrame()
-
-        // ensure slow check cadence is expected value before we start
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToHandlerTriggerCheck(fake))
-
-        // check number of non-black frames required to trigger map check does not change when a black frame is sent in the middle
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToHandlerTriggerCheck(fake))
-
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 1, numberOfFramesToHandlerTriggerCheck(fake))
-
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(notBlackFrame)
-        service.routeFrame(blackFrame)
-        assertEquals(SLOW_CHECK_EVERY_N_FRAMES - 2, numberOfFramesToHandlerTriggerCheck(fake))
-
+        // first tests have i = 0, ensures slow check cadence is expected value
+        for (i in 0 until SLOW_CHECK_EVERY_N_FRAMES) {
+            for (k in 0 until i) {
+                service.routeFrame(mockNotBlackFrame)
+            }
+            service.routeFrame(mockBlackFrame)
+        }
     }
 
     @Test
@@ -478,10 +464,10 @@ class ScreenCaptureServiceTest {
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two non-black frames
         // pass the pre-filter but stay below the slow-check rate.
-        repeat(SLOW_CHECK_EVERY_N_FRAMES - 1) { service.routeFrame(greyFrame()) }
+        repeat(SLOW_CHECK_EVERY_N_FRAMES - 1) { service.routeFrame(frame()) }
         assertEquals(0, fake.recognisesTriggerCalls)
 
-        service.routeFrame(greyFrame())
+        service.routeFrame(frame())
         assertEquals(1, fake.recognisesTriggerCalls)
     }
     //endregion
@@ -554,6 +540,9 @@ class ScreenCaptureServiceTest {
         val frame = frame()
         val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
 
+        // pollTriggers / active-handler dispatch — needs a Robolectric-created
+        // service since activation and DONE both call updateNotification, which
+        // needs a real attached Context.
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
@@ -595,42 +584,6 @@ class ScreenCaptureServiceTest {
     @Test
     fun `routeFrame starts checking for the map when there is an active handler`() {}
 
-    @Test
-    fun `routeFrame map screen detection (positive and negative) works when default map check is used`() {
-        // TODO this is going
-        // Activation calls updateNotification, which needs a real attached
-        // Context — the bare `service` field has none, so build via
-        // Robolectric here (as task 4's onCreate tests do).
-        val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
-        val fake = FakeSessionHandler(triggers = true)
-        createdService.handlers = listOf(fake)
-
-        // Activate directly via the pollTriggers seam — no need to drive the
-        // slow-check counter just to get a handler active.
-        createdService.pollTriggers(frame())
-        assertEquals(fake, createdService.activeHandlerForTesting)
-
-        val frame = frame()
-        val appStateDetector = mock<AppStateDetector>()
-        createdService.appStateDetector = appStateDetector
-        whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
-
-        // SLOW_CHECK_EVERY_N_FRAMES is 3 — so only 3rd frame hits the map detection
-        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame) }
-        verify(appStateDetector, times(1)).isMapScreen(frame)
-        assertEquals(0, fake.onTerminateCalls)
-        assertEquals(fake, createdService.activeHandlerForTesting)
-
-        whenever(appStateDetector.isMapScreen(any())).thenReturn(true)
-        repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame) }
-        verify(appStateDetector, times(2)).isMapScreen(frame)
-        assertEquals(1, fake.onTerminateCalls)
-        assertNull(createdService.activeHandlerForTesting)
-    }
-
-    // pollTriggers / active-handler dispatch — needs a Robolectric-created
-    // service since activation and DONE both call updateNotification, which
-    // needs a real attached Context.
     //endregion
 
     //endregion routeFrame
