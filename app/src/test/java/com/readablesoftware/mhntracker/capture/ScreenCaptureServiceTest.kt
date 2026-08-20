@@ -21,7 +21,6 @@ import com.readablesoftware.mhntracker.detection.HandlerStatus
 import com.readablesoftware.mhntracker.detection.HuntReportDetector
 import com.readablesoftware.mhntracker.detection.SessionHandler
 import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
-import com.readablesoftware.mhntracker.testutil.TestFrameMaker.makeFrame
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,7 +30,6 @@ import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
-//import org.mockito.ArgumentMatchers.any
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
@@ -135,6 +133,7 @@ class ScreenCaptureServiceTest {
     fun `black frames are saved when debug capture is enabled`() {
         DebugFrameSave.enabled = setOf(FrameSaveFlow.RAW)
         service.appStateDetector = mockAppStateDetector()
+        // stubbed true to ensure if black screen detection triggered before saving debug frame, this won't accidentally pass
         whenever(service.appStateDetector.isBlackScreen(any())).thenReturn(true)
 
         repeat(3) {
@@ -278,6 +277,8 @@ class ScreenCaptureServiceTest {
     fun `handlers set via the seam are polled by routeFrame at the slow-check rate`() {
         val fake = FakeSessionHandler()
         service.handlers = listOf(fake)
+        val appStateDetector = mockAppStateDetector()
+        service.appStateDetector = appStateDetector
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two calls are cheap
         // frames only, the third hits the slow-check branch.
@@ -292,7 +293,7 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
-        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        createdService.appStateDetector = mockAppStateDetector()
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — trigger polling only runs on the
         // third call.
@@ -310,7 +311,7 @@ class ScreenCaptureServiceTest {
         val first = FakeSessionHandler(triggers = true)
         val second = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(first, second)
-        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        createdService.appStateDetector = mockAppStateDetector()
 
 
         repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame()) }
@@ -328,7 +329,7 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.CONTINUE)
         createdService.handlers = listOf(fake)
-        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        createdService.appStateDetector = mockAppStateDetector()
 
         createdService.pollTriggers(frame())
         assertEquals(fake, createdService.activeHandlerForTesting)
@@ -344,7 +345,7 @@ class ScreenCaptureServiceTest {
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true, frameStatus = HandlerStatus.DONE)
         createdService.handlers = listOf(fake)
-        createdService.appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        createdService.appStateDetector = mockAppStateDetector()
 
         createdService.pollTriggers(frame())
         assertEquals(fake, createdService.activeHandlerForTesting)
@@ -363,12 +364,9 @@ class ScreenCaptureServiceTest {
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
         createdService.pollTriggers(frame)
-        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        val appStateDetector = mockAppStateDetector()
         createdService.appStateDetector = appStateDetector
         assertEquals(fake, createdService.activeHandlerForTesting)
-
-        var mapDetectionCount = 0
-        val isMapScreen = { _: Bitmap -> mapDetectionCount++; false }
 
         repeat(SLOW_CHECK_EVERY_N_FRAMES) {
             createdService.routeFrame(frame)
@@ -382,7 +380,7 @@ class ScreenCaptureServiceTest {
 
     //region BLACK FRAME TESTING
 
-    fun numberOfFramesToMapCheck(): Int {
+    private fun numberOfFramesToMapCheck(): Int {
         // need to wrap the check variable since Mockito uses Java SAM interface
         val isMapScreenCalled = booleanArrayOf(false)
 
@@ -399,7 +397,7 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `routeFrame leaves the slow frame check count for map detection untouched when black frames are detected`() {
-        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        val appStateDetector = mockAppStateDetector()
         service.handlers = listOf()
         service.appStateDetector = appStateDetector
 
@@ -411,10 +409,8 @@ class ScreenCaptureServiceTest {
         // test slow check cadence is expected value with no black frames before we start
         assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToMapCheck())
 
-        for (i in 0 until SLOW_CHECK_EVERY_N_FRAMES) {
-            for (k in 0 until i) {
-                service.routeFrame(mockNotBlackFrame)
-            }
+        for (i in 0 ..< SLOW_CHECK_EVERY_N_FRAMES) {
+            repeat(i)  { service.routeFrame(mockNotBlackFrame) }
             service.routeFrame(mockBlackFrame)
             assertEquals(SLOW_CHECK_EVERY_N_FRAMES - i, numberOfFramesToMapCheck())
         }
@@ -434,11 +430,11 @@ class ScreenCaptureServiceTest {
     @Test
     fun `routeFrame leaves the slow frame check count for handler triggers untouched when black frames are detected`() {
         val fake = FakeSessionHandler()
-        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        val appStateDetector = mockAppStateDetector()
         service.appStateDetector = appStateDetector
         service.handlers = listOf(fake)
 
-       val mockBlackFrame = frame()
+        val mockBlackFrame = frame()
         val mockNotBlackFrame = frame()
         whenever(appStateDetector.isBlackScreen(mockBlackFrame)).thenReturn(true)
         whenever(appStateDetector.isBlackScreen(mockNotBlackFrame)).thenReturn(false)
@@ -448,12 +444,13 @@ class ScreenCaptureServiceTest {
         repeat(SLOW_CHECK_EVERY_N_FRAMES + 1) { service.routeFrame(mockBlackFrame) }
         assertEquals(0, fake.recognisesTriggerCalls)
 
-        // first tests have i = 0, ensures slow check cadence is expected value
-        for (i in 0 until SLOW_CHECK_EVERY_N_FRAMES) {
-            for (k in 0 until i) {
-                service.routeFrame(mockNotBlackFrame)
-            }
+        // test slow check cadence is expected value with no black frames before we start
+        assertEquals(SLOW_CHECK_EVERY_N_FRAMES, numberOfFramesToHandlerTriggerCheck(fake))
+
+        for (i in 0 ..< SLOW_CHECK_EVERY_N_FRAMES) {
+            repeat(i) { service.routeFrame(mockNotBlackFrame) }
             service.routeFrame(mockBlackFrame)
+            assertEquals(SLOW_CHECK_EVERY_N_FRAMES - i, numberOfFramesToHandlerTriggerCheck(fake))
         }
     }
 
@@ -461,6 +458,8 @@ class ScreenCaptureServiceTest {
     fun `routeFrame polls handlers only on the Nth non-black frame`() {
         val fake = FakeSessionHandler()
         service.handlers = listOf(fake)
+        val appStateDetector = mockAppStateDetector()
+        service.appStateDetector = appStateDetector
 
         // SLOW_CHECK_EVERY_N_FRAMES is 3 — the first two non-black frames
         // pass the pre-filter but stay below the slow-check rate.
@@ -482,23 +481,14 @@ class ScreenCaptureServiceTest {
     private fun mockAppStateDetector(): AppStateDetector {
         val appStateDetector = mock<AppStateDetector>()
         whenever(appStateDetector.isBlackScreen(any())).thenReturn(false)
-        return appStateDetector
-    }
-
-    private fun mockAppStateDetectorMapAlwaysFalse(frame: Bitmap? = null): AppStateDetector {
-        val appStateDetector = mockAppStateDetector()
-        if (frame == null) {
-            whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
-        } else {
-            whenever(appStateDetector.isMapScreen(frame)).thenReturn(false)
-        }
+        whenever(appStateDetector.isMapScreen(any())).thenReturn(false)
         return appStateDetector
     }
 
     @Test
     fun `routeFrame uses slow check cadence for detecting map screens`() {
         val cadenceRepeat = 2
-        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        val appStateDetector = mockAppStateDetector()
         service.appStateDetector = appStateDetector
 
         val frame = frame()
@@ -538,7 +528,7 @@ class ScreenCaptureServiceTest {
     @Test
     fun `routeFrame does not send terminate to the active handler when a map screen check returns false`() {
         val frame = frame()
-        val appStateDetector = mockAppStateDetectorMapAlwaysFalse()
+        val appStateDetector = mockAppStateDetector()
 
         // pollTriggers / active-handler dispatch — needs a Robolectric-created
         // service since activation and DONE both call updateNotification, which
@@ -630,7 +620,7 @@ class ScreenCaptureServiceTest {
         for ((coord, rgba) in pixels) {
             val (col, row) = coord
             val offset = row * rowStride + col * pixelStride
-            for (i in 0 until 4) data[offset + i] = rgba[i].toByte()
+            for (i in 0 ..< 4) data[offset + i] = rgba[i].toByte()
         }
         return ByteBuffer.wrap(data)
     }
