@@ -406,7 +406,7 @@ class ScreenCaptureService : Service() {
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun captureFrame(): Bitmap? {
         val image = imageReader?.acquireLatestImage() ?: return null
-        return try {
+        return image.use {
             val planes      = image.planes
             val buffer      = planes[0].buffer
             val pixelStride = planes[0].pixelStride
@@ -416,8 +416,6 @@ class ScreenCaptureService : Service() {
             val bitmap = createBitmap(image.width + rowPadding / pixelStride, image.height)
             bitmap.copyPixelsFromBuffer(buffer)
             bitmap
-        } finally {
-            image.close()
         }
     }
 

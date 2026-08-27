@@ -20,7 +20,6 @@ import com.readablesoftware.mhntracker.detection.FightStartDetector
 import com.readablesoftware.mhntracker.detection.HandlerStatus
 import com.readablesoftware.mhntracker.detection.HuntReportDetector
 import com.readablesoftware.mhntracker.detection.SessionHandler
-import com.readablesoftware.mhntracker.testutil.TestFrameLoader.loadTestFrame
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -472,11 +471,6 @@ class ScreenCaptureServiceTest {
     //endregion
 
     //region MAP SCREEN DETECTION
-    // Real map-screen capture already validated by AppStateDetectorTest's
-    // MapDetectedTest — reused here rather than constructing a synthetic
-    // compass fixture.
-    private fun mapFrame(): Bitmap =
-        loadTestFrame("map_detection/routine/positive", "frame_0000.png")
 
     private fun mockAppStateDetector(): AppStateDetector {
         val appStateDetector = mock<AppStateDetector>()
