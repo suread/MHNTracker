@@ -3,9 +3,7 @@ package com.readablesoftware.mhntracker.capture
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -21,16 +19,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val viewModel: CaptureViewModel by viewModels()
 
-    private val mediaProjectionManager by lazy {
-        getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-    }
-
-    private val projectionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            startCaptureService(result.resultCode, result.data!!)
-        }
+    private val projectionLauncher = registerMediaProjectionLauncher { granted ->
+        if (granted) viewModel.updateState(CaptureState.WAITING)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,16 +80,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestMediaProjectionPermission() {
-        projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
-    }
-
-    private fun startCaptureService(resultCode: Int, data: Intent) {
-        val intent = Intent(this, ScreenCaptureService::class.java).apply {
-            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
-        }
-        startForegroundService(intent)
-        viewModel.updateState(CaptureState.WAITING)
+        projectionLauncher.launch(MediaProjectionRequest.createScreenCaptureIntent(this))
     }
 
     private fun stopCaptureService() {
