@@ -8,7 +8,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.readablesoftware.mhntracker.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
-import android.os.PowerManager
 import android.provider.Settings
 import android.net.Uri
 import androidx.lifecycle.Lifecycle
@@ -41,7 +40,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        requestBatteryOptimisationExemption()
         ensureOverlayPermission()
     }
 
@@ -89,17 +87,6 @@ class MainActivity : AppCompatActivity() {
             CaptureStatus.ACTIVE   -> "Service running — waiting for hunt report"
             CaptureStatus.IN_FIGHT -> "Service running — capturing"
             CaptureStatus.FIGHT_TERMINATED -> "Service running — last fight terminated"
-        }
-    }
-
-    private fun requestBatteryOptimisationExemption() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-            val intent = Intent(
-                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
         }
     }
 }
