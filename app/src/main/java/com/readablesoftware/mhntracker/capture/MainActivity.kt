@@ -4,24 +4,21 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.readablesoftware.mhntracker.R
 import com.readablesoftware.mhntracker.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 import android.os.PowerManager
 import android.provider.Settings
 import android.net.Uri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val viewModel: CaptureViewModel by viewModels()
 
-    private val projectionLauncher = registerMediaProjectionLauncher { granted ->
-        if (granted) viewModel.updateState(CaptureState.WAITING)
-    }
+    private val projectionLauncher = registerMediaProjectionLauncher()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,16 +26,18 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.toggleButton.setOnClickListener {
-            if (isServiceRunning()) {
-                stopCaptureService()
+            if (AppState.captureStatus.value != CaptureStatus.INACTIVE) {
+                stopService(Intent(this, ScreenCaptureService::class.java))
             } else {
                 requestMediaProjectionPermission()
             }
         }
 
         lifecycleScope.launch {
-            viewModel.state.collect { state ->
-                updateUi(state)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppState.captureStatus.collect {
+                    updateUi(it)
+                }
             }
         }
 
@@ -65,9 +64,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!isServiceRunning() && viewModel.state.value != CaptureState.STOPPED) {
-            viewModel.updateState(CaptureState.STOPPED)
-        }
         if (Settings.canDrawOverlays(this) && !isOverlayServiceRunning()) {
             startOverlayService()
         }
@@ -83,27 +79,16 @@ class MainActivity : AppCompatActivity() {
         projectionLauncher.launch(MediaProjectionRequest.createScreenCaptureIntent(this))
     }
 
-    private fun stopCaptureService() {
-        stopService(Intent(this, ScreenCaptureService::class.java))
-        viewModel.updateState(CaptureState.STOPPED)
-    }
-
-    private fun isServiceRunning(): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == ScreenCaptureService::class.java.name }
-    }
-
-    private fun updateUi(state: CaptureState) {
-        binding.toggleButton.text = when (state) {
-            CaptureState.STOPPED   -> "Start Capture"
-            CaptureState.WAITING   -> "Stop Capture"
-            CaptureState.CAPTURING -> "Stop Capture"
+    private fun updateUi(status: CaptureStatus) {
+        binding.toggleButton.text = when (status) {
+            CaptureStatus.INACTIVE -> "Start Capture"
+            else -> "Stop Capture"
         }
-        binding.statusText.text = when (state) {
-            CaptureState.STOPPED   -> "Service stopped"
-            CaptureState.WAITING   -> "Service running — waiting for hunt report"
-            CaptureState.CAPTURING -> "Service running — capturing"
+        binding.statusText.text = when (status) {
+            CaptureStatus.INACTIVE   -> "Service stopped"
+            CaptureStatus.ACTIVE   -> "Service running — waiting for hunt report"
+            CaptureStatus.IN_FIGHT -> "Service running — capturing"
+            CaptureStatus.FIGHT_TERMINATED -> "Service running — last fight terminated"
         }
     }
 
