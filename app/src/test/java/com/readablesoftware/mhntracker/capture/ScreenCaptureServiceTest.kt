@@ -60,7 +60,7 @@ class ScreenCaptureServiceTest {
     private lateinit var service: ScreenCaptureService
     private lateinit var tempDirectory: File
     private lateinit var originalEnabled: Set<FrameSaveFlow>
-    private lateinit var originalMediaProjectionActive: CaptureStatus
+    private lateinit var originalCaptureStatus: CaptureStatus
 
     @Before
     fun setUp() {
@@ -68,13 +68,13 @@ class ScreenCaptureServiceTest {
         tempDirectory = createTempDirectory("screencaptureservice-test-").toFile()
         service = ScreenCaptureService().apply { baseDir = tempDirectory }
         originalEnabled = DebugFrameSave.enabled
-        originalMediaProjectionActive = AppState.mediaProjectionActive.value
+        originalCaptureStatus = AppState.captureStatus.value
     }
 
     @After
     fun tearDown() {
         DebugFrameSave.enabled = originalEnabled
-        AppState.setMediaProjectionActive(originalMediaProjectionActive)
+        AppState.setCaptureStatus(originalCaptureStatus)
         tempDirectory.deleteRecursively()
     }
 
@@ -186,37 +186,37 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `onDestroy on a never-started service does not throw and resets AppState to INACTIVE`() {
-        AppState.setMediaProjectionActive(CaptureStatus.ACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.ACTIVE)
 
         service.onDestroy()
 
-        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.INACTIVE, AppState.captureStatus.value)
     }
 
     @Test
     fun `onStartCommand with a null intent returns START_NOT_STICKY without starting a projection`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
 
         val result = service.onStartCommand(null, 0, 0)
 
         assertEquals(Service.START_NOT_STICKY, result)
-        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.INACTIVE, AppState.captureStatus.value)
     }
 
     @Test
     fun `onStartCommand with result code but no result data returns START_NOT_STICKY without starting a projection`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
         val intent = Intent().putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, Activity.RESULT_OK)
 
         val result = service.onStartCommand(intent, 0, 0)
 
         assertEquals(Service.START_NOT_STICKY, result)
-        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.INACTIVE, AppState.captureStatus.value)
     }
 
     @Test
     fun `onStartCommand with a non-OK result code returns START_NOT_STICKY without starting a projection`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
         val intent = Intent().apply {
             putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
             putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, Intent())
@@ -225,7 +225,7 @@ class ScreenCaptureServiceTest {
         val result = service.onStartCommand(intent, 0, 0)
 
         assertEquals(Service.START_NOT_STICKY, result)
-        assertEquals(CaptureStatus.INACTIVE, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.INACTIVE, AppState.captureStatus.value)
     }
 
     private class FakeSessionHandler(
@@ -288,7 +288,7 @@ class ScreenCaptureServiceTest {
 
     @Test
     fun `routeFrame activates a triggering handler without forwarding the trigger frame to onFrame`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val fake = FakeSessionHandler(triggers = true)
         createdService.handlers = listOf(fake)
@@ -299,13 +299,13 @@ class ScreenCaptureServiceTest {
         repeat(SLOW_CHECK_EVERY_N_FRAMES) { createdService.routeFrame(frame()) }
 
         assertEquals(fake, createdService.activeHandlerForTesting)
-        assertEquals(CaptureStatus.IN_FIGHT, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.IN_FIGHT, AppState.captureStatus.value)
         assertEquals(0, fake.onFrameCalls)
     }
 
     @Test
     fun `routeFrame activates only the first-by-priority handler when two trigger on the same frame`() {
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
         val createdService = Robolectric.buildService(ScreenCaptureService::class.java).create().get()
         val first = FakeSessionHandler(triggers = true)
         val second = FakeSessionHandler(triggers = true)
@@ -353,7 +353,7 @@ class ScreenCaptureServiceTest {
 
         assertEquals(1, fake.onFrameCalls)
         assertNull(createdService.activeHandlerForTesting)
-        assertEquals(CaptureStatus.ACTIVE, AppState.mediaProjectionActive.value)
+        assertEquals(CaptureStatus.ACTIVE, AppState.captureStatus.value)
     }
 
     @Test

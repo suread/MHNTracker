@@ -11,15 +11,15 @@ enum class CaptureStatus {
 }
 
 /**
- * Process-wide singleton holding MediaProjection active state.
+ * Process-wide singleton holding the current [CaptureStatus].
  * Written by ScreenCaptureService, read by OverlayBubbleService.
  * Using an object (singleton) avoids needing a shared Application subclass.
  */
 object AppState {
-    private val _mediaProjectionActive = MutableStateFlow(CaptureStatus.INACTIVE) // TODO - change name to reflect use of enum rather than boolean!
-    val mediaProjectionActive: StateFlow<CaptureStatus> = _mediaProjectionActive
+    private val _captureStatus = MutableStateFlow(CaptureStatus.INACTIVE)
+    val captureStatus: StateFlow<CaptureStatus> = _captureStatus
 
-    fun setMediaProjectionActive(active: CaptureStatus) {
-        _mediaProjectionActive.value = active
+    fun setCaptureStatus(status: CaptureStatus) {
+        _captureStatus.value = status
     }
 }

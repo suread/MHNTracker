@@ -90,7 +90,7 @@ class OverlayBubbleService : Service() {
 
     private fun observeState() {
         observerJob = serviceScope.launch {
-            AppState.mediaProjectionActive.collectLatest { active ->
+            AppState.captureStatus.collectLatest { active ->
                 updateBubbleAppearance(active)
                 resizeBubble(active)
             }
@@ -157,7 +157,7 @@ class OverlayBubbleService : Service() {
     }
 
     private val controller by lazy {
-        BubbleController(this, AppState.mediaProjectionActive)
+        BubbleController(this, AppState.captureStatus)
     }
     private fun defaultX(): Int {
         val display = windowManager.defaultDisplay

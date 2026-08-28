@@ -180,7 +180,7 @@ class ScreenCaptureService : Service() {
             override fun onStop() {
                 virtualDisplay?.release()
                 imageReader?.close()
-                AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+                AppState.setCaptureStatus(CaptureStatus.INACTIVE)
                 stopSelf()
             }
         }, null)
@@ -193,7 +193,7 @@ class ScreenCaptureService : Service() {
             null, null
         )
 
-        AppState.setMediaProjectionActive(CaptureStatus.ACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.ACTIVE)
 
     }
 
@@ -306,7 +306,7 @@ class ScreenCaptureService : Service() {
         if (status == HandlerStatus.DONE) {
             Log.d(TAG, "Handler ${handler.javaClass.simpleName} finished")
             activeHandler = null
-            AppState.setMediaProjectionActive(CaptureStatus.ACTIVE) // MediaProjection is active, fight not being recorded
+            AppState.setCaptureStatus(CaptureStatus.ACTIVE) // MediaProjection is active, fight not being recorded
             updateNotification("Idle")
         }
     }
@@ -337,7 +337,7 @@ class ScreenCaptureService : Service() {
                     activated = handler
                     activeHandler = handler
                     val name = handler.javaClass.simpleName
-                    AppState.setMediaProjectionActive(CaptureStatus.IN_FIGHT)
+                    AppState.setCaptureStatus(CaptureStatus.IN_FIGHT)
                     Log.d(TAG, "Handler activated: $name")
                     updateNotification(notificationTextFor(handler))
                 } else {
@@ -453,7 +453,7 @@ class ScreenCaptureService : Service() {
         virtualDisplay?.release()
         mediaProjection?.stop()
         imageReader?.close()
-        AppState.setMediaProjectionActive(CaptureStatus.INACTIVE)
+        AppState.setCaptureStatus(CaptureStatus.INACTIVE)
         super.onDestroy()
     }
 }

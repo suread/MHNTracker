@@ -136,7 +136,7 @@ class FightHandler(
         logTriggerClassification()
         writeIncompleteMarker()
         resetSubState()
-        AppState.setMediaProjectionActive(CaptureStatus.FIGHT_TERMINATED)
+        AppState.setCaptureStatus(CaptureStatus.FIGHT_TERMINATED)
     }
 
     // ── Sub-state processing ──────────────────────────────────────────────
