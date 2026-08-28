@@ -56,13 +56,13 @@ class OverlayBubbleService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         createNotificationChannel()
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification(),
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        )
         createBubble()
         observeState()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(NOTIFICATION_ID, buildNotification())
+        return START_STICKY
     }
 
     private fun createBubble() {

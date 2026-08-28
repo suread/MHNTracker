@@ -1,7 +1,5 @@
 package com.readablesoftware.mhntracker.capture
 
-import android.app.ActivityManager
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -50,8 +48,6 @@ class MainActivity : AppCompatActivity() {
                 Uri.parse("package:$packageName")
             )
             startActivity(intent)
-        } else {
-            startOverlayService()
         }
     }
 
@@ -62,15 +58,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (Settings.canDrawOverlays(this) && !isOverlayServiceRunning()) {
+        if (Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
-    }
-
-    private fun isOverlayServiceRunning(): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == OverlayBubbleService::class.java.name }
     }
 
     private fun requestMediaProjectionPermission() {
