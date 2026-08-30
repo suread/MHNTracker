@@ -11,7 +11,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.readablesoftware.mhntracker.capture.AppState
 import com.readablesoftware.mhntracker.capture.CaptureStatus
 import com.readablesoftware.mhntracker.capture.MediaProjectionRequest
-import com.readablesoftware.mhntracker.capture.OverlayBubbleService
+import com.readablesoftware.mhntracker.bubble.OverlayBubbleService
 import com.readablesoftware.mhntracker.capture.ScreenCaptureService
 import com.readablesoftware.mhntracker.capture.registerMediaProjectionLauncher
 import com.readablesoftware.mhntracker.databinding.ActivityMainBinding

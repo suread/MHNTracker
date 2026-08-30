@@ -1,10 +1,11 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
 import android.app.Application
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.readablesoftware.mhntracker.capture.CaptureStatus
+import com.readablesoftware.mhntracker.capture.ScreenCaptureService
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before

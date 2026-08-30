@@ -1,7 +1,9 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import com.readablesoftware.mhntracker.capture.MediaProjectionRequest
+import com.readablesoftware.mhntracker.capture.registerMediaProjectionLauncher
 
 /**
  * Invisible Activity that runs the MediaProjection consent dialog for the

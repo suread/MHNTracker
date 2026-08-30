@@ -1,5 +1,6 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
+import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,6 +21,8 @@ import kotlinx.coroutines.launch
 import android.graphics.Point
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
+import com.readablesoftware.mhntracker.capture.AppState
+import com.readablesoftware.mhntracker.capture.CaptureStatus
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -187,7 +190,7 @@ class OverlayBubbleService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MHN Tracker")
             .setContentText("Overlay active")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setSmallIcon(R.drawable.ic_menu_camera)
             .build()
     }
 

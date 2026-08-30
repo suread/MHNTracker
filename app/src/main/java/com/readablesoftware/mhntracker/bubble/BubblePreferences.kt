@@ -1,4 +1,4 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
 import android.content.Context
 import android.content.Context.MODE_PRIVATE

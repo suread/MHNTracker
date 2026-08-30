@@ -28,7 +28,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".capture.PermissionTrampolineActivity"
+            android:name=".bubble.PermissionTrampolineActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.Transparent" />
@@ -37,7 +37,7 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
         <service
-            android:name=".capture.OverlayBubbleService"
+            android:name=".bubble.OverlayBubbleService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
            <property

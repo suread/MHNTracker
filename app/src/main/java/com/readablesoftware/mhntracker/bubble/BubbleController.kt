@@ -1,10 +1,11 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import kotlinx.coroutines.flow.StateFlow
 import androidx.core.graphics.toColorInt
+import com.readablesoftware.mhntracker.capture.CaptureStatus
+import com.readablesoftware.mhntracker.capture.ScreenCaptureService
 
 class BubbleController(
     private val context: Context,

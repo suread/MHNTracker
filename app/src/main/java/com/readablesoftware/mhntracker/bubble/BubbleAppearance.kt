@@ -1,4 +1,4 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker.bubble
 
 import androidx.annotation.ColorInt
 
