@@ -1,15 +1,21 @@
-package com.readablesoftware.mhntracker.capture
+package com.readablesoftware.mhntracker
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.readablesoftware.mhntracker.capture.AppState
+import com.readablesoftware.mhntracker.capture.CaptureStatus
+import com.readablesoftware.mhntracker.capture.MediaProjectionRequest
+import com.readablesoftware.mhntracker.capture.OverlayBubbleService
+import com.readablesoftware.mhntracker.capture.ScreenCaptureService
+import com.readablesoftware.mhntracker.capture.registerMediaProjectionLauncher
 import com.readablesoftware.mhntracker.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
-import android.provider.Settings
-import android.net.Uri
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
 
 class MainActivity : AppCompatActivity() {
 

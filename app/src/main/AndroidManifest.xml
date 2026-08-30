@@ -20,7 +20,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MHNTracker">
         <activity
-            android:name=".capture.MainActivity"
+            android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
