@@ -17,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import android.content.SharedPreferences
+import android.graphics.Point
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import kotlin.math.abs
@@ -28,16 +28,12 @@ class OverlayBubbleService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 2
         private const val CHANNEL_ID = "mhn_bubble_channel"
-        private const val PREFS_NAME = "bubble_prefs"
-        private const val PREF_X = "bubble_x"
-        private const val PREF_Y = "bubble_y"
-
     }
 
     private lateinit var windowManager: WindowManager
     private lateinit var bubbleView: ImageView
     private lateinit var layoutParams: WindowManager.LayoutParams
-    private lateinit var prefs: SharedPreferences
+    private lateinit var prefs: BubblePreferences
     private val serviceScope = CoroutineScope(Dispatchers.Main)
     private var observerJob: Job? = null
 
@@ -52,7 +48,7 @@ class OverlayBubbleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        prefs         = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs         = BubblePreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         createNotificationChannel()
@@ -79,8 +75,9 @@ class OverlayBubbleService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = prefs.getInt(PREF_X, defaultX())
-            y = prefs.getInt(PREF_Y, defaultY())
+            val point = prefs.position
+            x = point?.x ?: defaultX()
+            y = point?.y ?: defaultY()
         }
 
         bubbleView.setOnTouchListener { _, event -> handleTouch(event) }
@@ -143,10 +140,7 @@ class OverlayBubbleService : Service() {
             }
             MotionEvent.ACTION_UP -> {
                 if (isDragging) {
-                    prefs.edit()
-                        .putInt(PREF_X, layoutParams.x)
-                        .putInt(PREF_Y, layoutParams.y)
-                        .apply()
+                    prefs.position = Point(layoutParams.x, layoutParams.y)
                 } else {
                     controller.onTap()
                 }
@@ -161,14 +155,14 @@ class OverlayBubbleService : Service() {
     }
     private fun defaultX(): Int {
         val display = windowManager.defaultDisplay
-        val size    = android.graphics.Point()
+        val size    = Point()
         display.getSize(size)
         return size.x - dpToPx(controller.appearanceForStatus(CaptureStatus.INACTIVE).sizeDp) - dpToPx(8f)
     }
 
     private fun defaultY(): Int {
         val display = windowManager.defaultDisplay
-        val size    = android.graphics.Point()
+        val size    = Point()
         display.getSize(size)
         return size.y / 2
     }
