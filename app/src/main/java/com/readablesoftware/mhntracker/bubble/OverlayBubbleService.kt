@@ -1,6 +1,5 @@
 package com.readablesoftware.mhntracker.bubble
 
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -43,6 +42,10 @@ class OverlayBubbleService : Service() {
     // Drag tracking
     private var dragInitialX = 0
     private var dragInitialY = 0
+
+    private var dragScreenW = 0
+    private var dragScreenH = 0
+
     private var dragTouchX   = 0f
     private var dragTouchY   = 0f
     private var isDragging   = false
@@ -79,8 +82,9 @@ class OverlayBubbleService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             val point = prefs.position
-            x = point?.x ?: defaultX()
-            y = point?.y ?: defaultY()
+            val screenSize = screenSize()
+            x = clampBubbleCoord(point?.x ?: defaultX(), sizePx, screenSize.x)
+            y = clampBubbleCoord(point?.y ?: defaultY(), sizePx, screenSize.y)
         }
 
         bubbleView.setOnTouchListener { _, event -> handleTouch(event) }
@@ -113,6 +117,9 @@ class OverlayBubbleService : Service() {
         val sizePx = dpToPx(bubbleAppearance.sizeDp)
         layoutParams.width  = sizePx
         layoutParams.height = sizePx
+        var screenSize = screenSize()
+        layoutParams.x = clampBubbleCoord(layoutParams.x, sizePx, screenSize.x)
+        layoutParams.y = clampBubbleCoord(layoutParams.y, sizePx, screenSize.y)
         windowManager.updateViewLayout(bubbleView, layoutParams)
     }
 
@@ -121,6 +128,9 @@ class OverlayBubbleService : Service() {
             MotionEvent.ACTION_DOWN -> {
                 dragInitialX = layoutParams.x
                 dragInitialY = layoutParams.y
+                val screenSize = screenSize()
+                dragScreenW = screenSize.x
+                dragScreenH = screenSize.y
                 dragTouchX   = event.rawX
                 dragTouchY   = event.rawY
                 isDragging   = false
@@ -135,8 +145,8 @@ class OverlayBubbleService : Service() {
                     isDragging = true
                 }
                 if (isDragging) {
-                    layoutParams.x = dragInitialX + dx
-                    layoutParams.y = dragInitialY + dy
+                    layoutParams.x = clampBubbleCoord(dragInitialX + dx, layoutParams.width, dragScreenW)
+                    layoutParams.y = clampBubbleCoord(dragInitialY + dy, layoutParams.height, dragScreenH)
                     windowManager.updateViewLayout(bubbleView, layoutParams)
                 }
                 true
@@ -156,18 +166,20 @@ class OverlayBubbleService : Service() {
     private val controller by lazy {
         BubbleController(this, AppState.captureStatus)
     }
-    private fun defaultX(): Int {
+
+    private fun screenSize(): Point {
         val display = windowManager.defaultDisplay
-        val size    = Point()
+        val size = Point()
         display.getSize(size)
-        return size.x - dpToPx(controller.appearanceForStatus(CaptureStatus.INACTIVE).sizeDp) - dpToPx(8f)
+        return size
+    }
+
+    private fun defaultX(): Int {
+        return screenSize().x - dpToPx(controller.appearanceForStatus(CaptureStatus.INACTIVE).sizeDp) - dpToPx(8f)
     }
 
     private fun defaultY(): Int {
-        val display = windowManager.defaultDisplay
-        val size    = Point()
-        display.getSize(size)
-        return size.y / 2
+        return screenSize().y / 2
     }
 
     private fun dpToPx(dp: Float): Int =
@@ -190,7 +202,7 @@ class OverlayBubbleService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MHN Tracker")
             .setContentText("Overlay active")
-            .setSmallIcon(R.drawable.ic_menu_camera)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
             .build()
     }
 
